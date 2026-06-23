@@ -1,0 +1,21 @@
+{
+  "name": "Aperture (example profile — second kit, proves brand-agnosticism)",
+  "status": "EXAMPLE — invented light-mode brand to demonstrate kit-swap; not a real brand",
+  "mode": "light",
+  "color": {
+    "bg":        { "r": 255, "g": 255, "b": 255 },
+    "surface":   { "r": 245, "g": 245, "b": 244 },
+    "text":      { "r": 26, "g": 26, "b": 26 },
+    "muted":     { "r": 107, "g": 107, "b": 107 },
+    "accent":    { "r": 37, "g": 99, "b": 235 },
+    "accentText":{ "r": 255, "g": 255, "b": 255 }
+  },
+  "type": {
+    "display": { "family": "system-ui, sans-serif", "weights": [600, 700] },
+    "body":    { "family": "system-ui, sans-serif", "weights": [400, 500] },
+    "scale":   [13, 15, 18, 24, 36, 56, 72]
+  },
+  "logo": { "wordmark": "APERTURE", "asset": "EXTERNAL: provide at run time" },
+  "voice": { "skill": "brand-voice", "tenets": ["plain", "confident", "no hype"] },
+  "dna_rubric": "dna-rubric.md"
+}

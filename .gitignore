@@ -9,8 +9,8 @@ samples/*.jpeg
 # real / proprietary brand kits — the engine ships only the example profile
 brand-kits/*
 !brand-kits/SCHEMA.md
-!brand-kits/example-rocketminds/
-!brand-kits/example-rocketminds/**
+!brand-kits/example-*/
+!brand-kits/example-*/**
 
 # node / os / secrets / local config
 node_modules/

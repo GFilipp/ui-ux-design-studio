@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>good (kit 2: Aperture) — same section, different brand kit</title>
+<style>
+  /* SAME structure as good.html. Only the brand-kit tokens + type changed.
+     This is the brand-agnostic proof: swap the kit, get a different brand. */
+  :root {
+    --bg:#ffffff; --surface:#f5f5f4; --text:#1a1a1a; --muted:#6b6b6b; --accent:#2563eb; --accent-text:#ffffff;
+  }
+  * { margin:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family: system-ui, -apple-system, sans-serif; -webkit-font-smoothing:antialiased; }
+  .nav { display:flex; justify-content:space-between; align-items:center; padding:24px 48px; }
+  .brand { font:700 14px system-ui,sans-serif; letter-spacing:.06em; }
+  .brand b { color:var(--accent); }
+  .nav a { color:var(--accent-text); background:var(--accent); text-decoration:none; font:600 14px system-ui,sans-serif; padding:9px 16px; border-radius:8px; }
+  .hero { display:grid; grid-template-columns: 1.05fr .95fr; gap:64px; align-items:center; padding:72px 48px 96px; max-width:1280px; margin:0 auto; }
+  .eyebrow { color:var(--muted); font:600 13px system-ui,sans-serif; letter-spacing:.14em; }
+  h1 { font-family: system-ui, sans-serif; font-weight:700; font-size:60px; line-height:1.05; letter-spacing:-.02em; margin:20px 0 24px; max-width:13ch; }
+  h1 .accent { color:var(--accent); display:block; }
+  .sub { color:var(--muted); font-size:17px; line-height:1.6; max-width:46ch; }
+  .cta { margin-top:32px; display:inline-block; background:var(--accent); color:var(--accent-text); font:600 15px system-ui,sans-serif; padding:13px 22px; border-radius:10px; }
+  .panel { background:var(--surface); border:1px solid rgba(26,26,26,.10); border-radius:16px; padding:22px; }
+  .panel h2 { font:600 12px system-ui,sans-serif; letter-spacing:.12em; color:var(--muted); margin-bottom:16px; }
+  .row { display:flex; justify-content:space-between; align-items:center; padding:14px 0; border-top:1px solid rgba(26,26,26,.08); }
+  .row:first-of-type { border-top:none; }
+  .role { font-size:15px; color:var(--text); }
+  .meta { font-size:13px; color:var(--muted); }
+  .tag { font:600 12px system-ui,sans-serif; color:var(--accent); }
+</style>
+</head>
+<body>
+  <div class="nav">
+    <div class="brand">APER<b>TURE</b></div>
+    <a href="#">Get started</a>
+  </div>
+  <section class="hero">
+    <div>
+      <div class="eyebrow">FOR ACTORS</div>
+      <h1>Get seen. <span class="accent">Get the call.</span></h1>
+      <p class="sub">A casting-ready site plus an agent that surfaces the roles you fit, every morning. You stay in control.</p>
+      <a class="cta" href="#">See today's shortlist</a>
+    </div>
+    <div class="panel">
+      <h2>TODAY'S SHORTLIST</h2>
+      <div class="row"><span class="role">Indie feature — lead</span><span class="tag">94% fit</span></div>
+      <div class="row"><span class="role">Limited series — guest</span><span class="tag">88% fit</span></div>
+      <div class="row"><span class="role">National spot — principal</span><span class="meta">2d left</span></div>
+      <div class="row"><span class="role">Stage — supporting</span><span class="meta">new</span></div>
+    </div>
+  </section>
+</body>
+</html>

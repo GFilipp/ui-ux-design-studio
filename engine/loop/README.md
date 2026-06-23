@@ -28,3 +28,8 @@ When `extract.js` is run through an MCP `execute_javascript` bridge, the returne
 truncated by the tool's output cap on large pages. Mitigations: keep `text` slices short (done),
 and for big pages run extract per-section, or write the JSON to a local writable sink rather than
 returning it inline. Validate the captured JSON parses before running `floor_check.py`.
+
+A second limitation: resizing the browser window via the MCP bridge does not reliably force a
+true mobile viewport (desktop Chrome clamps the minimum width; `innerWidth` stayed 1512 at a 390
+request). The mobile-breakpoint floor check therefore needs **headless device emulation**
+(Playwright/Puppeteer or CDP `Emulation.setDeviceMetricsOverride` at 390x844), not window resize.
