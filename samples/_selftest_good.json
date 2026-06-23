@@ -1,0 +1,11 @@
+{
+  "viewport": { "w": 1440, "h": 900, "dpr": 2 },
+  "textNodes": [
+    { "tag": "p", "text": "clean readable body copy", "color": { "r": 30, "g": 30, "b": 30 }, "bg": { "r": 255, "g": 255, "b": 255 }, "bgImage": false, "fontSize": 16, "fontWeight": 400, "rect": { "x": 40, "y": 240, "w": 300, "h": 20 }, "lastLineWords": 4, "totalWords": 4 },
+    { "tag": "h1", "text": "A balanced headline with no orphan word", "color": { "r": 20, "g": 20, "b": 20 }, "bg": { "r": 255, "g": 255, "b": 255 }, "bgImage": false, "fontSize": 48, "fontWeight": 700, "rect": { "x": 40, "y": 80, "w": 700, "h": 120 }, "lastLineWords": 3, "totalWords": 7 }
+  ],
+  "images": [
+    { "src": "hero.png", "naturalWidth": 1600, "alt": "product hero", "visible": true }
+  ],
+  "overflow": { "docScrollW": 1440, "clientW": 1440, "horizontal": false, "offscreenRight": 0 }
+}

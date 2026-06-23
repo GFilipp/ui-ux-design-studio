@@ -1,0 +1,24 @@
+{
+  "name": "RocketMinds (example profile)",
+  "status": "EXAMPLE — color/type values approximate, derived from the live site; verify against the RocketMinds brand source of truth before production use",
+  "mode": "dark",
+  "color": {
+    "bg":        { "r": 26, "g": 22, "b": 20 },
+    "surface":   { "r": 34, "g": 29, "b": 26 },
+    "text":      { "r": 237, "g": 232, "b": 228 },
+    "muted":     { "r": 158, "g": 150, "b": 142 },
+    "accent":    { "r": 217, "g": 102, "b": 58 },
+    "accentText":{ "r": 26, "g": 22, "b": 20 }
+  },
+  "type": {
+    "display": { "family": "serif", "weights": [400, 600] },
+    "body":    { "family": "ui-monospace, monospace", "weights": [400, 500] },
+    "scale":   [13, 15, 18, 24, 36, 56, 80]
+  },
+  "logo": { "wordmark": "ROCKETMINDS", "asset": "EXTERNAL: provide path at run time; never committed" },
+  "voice": {
+    "skill": "rocketminds-brand-voice",
+    "tenets": ["no hype or buzzwords", "no em dashes; use periods/semicolons", "proof-gated, never invented metrics", "direct and candid"]
+  },
+  "dna_rubric": "dna-rubric.md"
+}

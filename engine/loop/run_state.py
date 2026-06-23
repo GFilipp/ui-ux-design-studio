@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""design-run state machine — the fail-loud guardrail spine (brand-agnostic).
+
+A run may exit a gate ONLY via `pass` or `overridden(reason)`. There is no silent
+third path: a gate left `halted` blocks ship. Every override carries a reason and
+is surfaced in the ship summary, so degradation is always visible and chosen.
+
+Usage:
+  run_state.py init   --file design-run.json --project NAME --surface web --brand-kit PATH
+  run_state.py gate   --file design-run.json --name contrast --status pass|fail [--detail '...']
+  run_state.py override --file design-run.json --gate contrast --reason "deadline; ship anyway"
+  run_state.py ship-check --file design-run.json     # exit 0 ship-ok, 3 blocked
+"""
+import argparse
+import json
+import os
+import sys
+
+GATES = ["brand_kit", "references", "assets", "contrast", "orphans", "layout", "responsive", "human_pick"]
+
+
+def load(path):
+    with open(path) as f:
+        return json.load(f)
+
+
+def save(path, state):
+    with open(path, "w") as f:
+        json.dump(state, f, indent=2)
+
+
+def cmd_init(a):
+    if not a.brand_kit:
+        sys.stderr.write("HALT: no brand kit selected. Provide --brand-kit PATH or this run cannot start.\n")
+        sys.exit(3)
+    if not os.path.exists(a.brand_kit):
+        sys.stderr.write("HALT: brand kit not found: %s\n" % a.brand_kit)
+        sys.exit(3)
+    state = {
+        "project": a.project,
+        "surface": a.surface,
+        "brand_kit": a.brand_kit,
+        "references": [],
+        "gates": {g: {"status": "halted", "detail": None, "override_reason": None} for g in GATES},
+    }
+    state["gates"]["brand_kit"] = {"status": "pass", "detail": a.brand_kit, "override_reason": None}
+    save(a.file, state)
+    print("initialized run for '%s' (%s) with brand kit %s" % (a.project, a.surface, a.brand_kit))
+
+
+def cmd_gate(a):
+    state = load(a.file)
+    if a.name not in state["gates"]:
+        sys.stderr.write("unknown gate: %s\n" % a.name)
+        sys.exit(1)
+    status = "pass" if a.status == "pass" else "halted"
+    state["gates"][a.name] = {"status": status, "detail": a.detail, "override_reason": None}
+    save(a.file, state)
+    print("%s -> %s" % (a.name, status))
+    sys.exit(0 if status == "pass" else 2)
+
+
+def cmd_override(a):
+    state = load(a.file)
+    if a.gate not in state["gates"]:
+        sys.stderr.write("unknown gate: %s\n" % a.gate)
+        sys.exit(1)
+    if not a.reason or not a.reason.strip():
+        sys.stderr.write("HALT: override requires a non-empty --reason.\n")
+        sys.exit(3)
+    g = state["gates"][a.gate]
+    g["status"] = "overridden"
+    g["override_reason"] = a.reason.strip()
+    save(a.file, state)
+    print("OVERRIDE logged: %s — %s" % (a.gate, a.reason.strip()))
+
+
+def cmd_ship_check(a):
+    state = load(a.file)
+    halted = [g for g, v in state["gates"].items() if v["status"] == "halted"]
+    overrides = {g: v["override_reason"] for g, v in state["gates"].items() if v["status"] == "overridden"}
+    print("=== ship summary: %s (%s) ===" % (state["project"], state["surface"]))
+    print("brand kit: %s" % state["brand_kit"])
+    for g in GATES:
+        v = state["gates"][g]
+        line = "  %-12s %s" % (g, v["status"])
+        if v["status"] == "overridden":
+            line += "  (reason: %s)" % v["override_reason"]
+        print(line)
+    if overrides:
+        print("SHIPPED WITH %d OVERRIDE(S): %s" % (len(overrides), ", ".join(overrides)))
+    if halted:
+        print("BLOCKED — halted gates: %s. Pass them or log an override." % ", ".join(halted))
+        sys.exit(3)
+    print("SHIP OK.")
+    sys.exit(0)
+
+
+def main():
+    ap = argparse.ArgumentParser(description="design-run fail-loud state machine")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    p = sub.add_parser("init"); p.add_argument("--file", required=True)
+    p.add_argument("--project", required=True); p.add_argument("--surface", default="web")
+    p.add_argument("--brand-kit", dest="brand_kit", default=None); p.set_defaults(fn=cmd_init)
+
+    p = sub.add_parser("gate"); p.add_argument("--file", required=True)
+    p.add_argument("--name", required=True); p.add_argument("--status", required=True, choices=["pass", "fail"])
+    p.add_argument("--detail", default=None); p.set_defaults(fn=cmd_gate)
+
+    p = sub.add_parser("override"); p.add_argument("--file", required=True)
+    p.add_argument("--gate", required=True); p.add_argument("--reason", required=True); p.set_defaults(fn=cmd_override)
+
+    p = sub.add_parser("ship-check"); p.add_argument("--file", required=True); p.set_defaults(fn=cmd_ship_check)
+
+    a = ap.parse_args()
+    a.fn(a)
+
+
+if __name__ == "__main__":
+    main()

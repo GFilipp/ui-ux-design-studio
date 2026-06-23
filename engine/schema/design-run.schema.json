@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "design-run",
+  "description": "Fail-loud state for one design run. A gate exits ONLY via pass or overridden(reason); a halted gate blocks ship. No silent degradation.",
+  "type": "object",
+  "required": ["project", "surface", "brand_kit", "gates"],
+  "properties": {
+    "project": { "type": "string" },
+    "surface": { "type": "string", "enum": ["web", "app", "marketing-asset", "deck"] },
+    "brand_kit": { "type": "string", "description": "path to the active brand-kit profile; required, never defaulted" },
+    "references": {
+      "type": "array",
+      "description": "exemplar reference screenshots fed to the builder + floor rubric (>=3 to pass the references gate)",
+      "items": { "type": "string" }
+    },
+    "gates": {
+      "type": "object",
+      "description": "one entry per gate",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "status": { "type": "string", "enum": ["halted", "pass", "overridden"] },
+          "detail": { "type": ["string", "null"] },
+          "override_reason": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}
