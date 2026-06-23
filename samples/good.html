@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>good — built to the brand kit</title>
+<style>
+  :root {
+    --bg:#1a1614; --surface:#221d1a; --text:#ede8e4; --muted:#9e968e; --accent:#d9663a; --accent-text:#1a1614;
+  }
+  * { margin:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family: ui-monospace, "SF Mono", monospace; -webkit-font-smoothing:antialiased; }
+  .nav { display:flex; justify-content:space-between; align-items:center; padding:24px 48px; }
+  .brand { font:600 14px ui-monospace,monospace; letter-spacing:.08em; }
+  .brand b { color:var(--accent); }
+  .nav a { color:var(--accent-text); background:var(--accent); text-decoration:none; font:600 14px ui-monospace,monospace; padding:9px 16px; border-radius:8px; }
+  .hero { display:grid; grid-template-columns: 1.05fr .95fr; gap:64px; align-items:center; padding:72px 48px 96px; max-width:1280px; margin:0 auto; }
+  .eyebrow { color:var(--muted); font:400 13px ui-monospace,monospace; letter-spacing:.22em; }
+  h1 { font-family: Georgia, serif; font-weight:600; font-size:64px; line-height:1.04; margin:20px 0 24px; max-width:13ch; }
+  h1 .accent { color:var(--accent); display:block; }
+  .sub { color:var(--muted); font-size:17px; line-height:1.6; max-width:46ch; }
+  .cta { margin-top:32px; display:inline-block; background:var(--accent); color:var(--accent-text); font:600 15px ui-monospace,monospace; padding:13px 22px; border-radius:10px; }
+  /* product-as-hero: a real mock output, no images, clean type */
+  .panel { background:var(--surface); border:1px solid rgba(237,232,228,.10); border-radius:16px; padding:22px; }
+  .panel h2 { font:600 12px ui-monospace,monospace; letter-spacing:.16em; color:var(--muted); margin-bottom:16px; }
+  .row { display:flex; justify-content:space-between; align-items:center; padding:14px 0; border-top:1px solid rgba(237,232,228,.08); }
+  .row:first-of-type { border-top:none; }
+  .role { font-size:15px; color:var(--text); }
+  .meta { font-size:13px; color:var(--muted); }
+  .tag { font:600 12px ui-monospace,monospace; color:var(--accent); }
+</style>
+</head>
+<body>
+  <div class="nav">
+    <div class="brand">ROCKET<b>MINDS</b></div>
+    <a href="#">Get started</a>
+  </div>
+  <section class="hero">
+    <div>
+      <div class="eyebrow">FOR ACTORS</div>
+      <h1>Get seen. <span class="accent">Get the call.</span></h1>
+      <p class="sub">A casting-ready site plus an agent that surfaces the roles you fit, every morning. You stay in control.</p>
+      <a class="cta" href="#">See today's shortlist</a>
+    </div>
+    <div class="panel">
+      <h2>TODAY'S SHORTLIST</h2>
+      <div class="row"><span class="role">Indie feature — lead</span><span class="tag">94% fit</span></div>
+      <div class="row"><span class="role">Limited series — guest</span><span class="tag">88% fit</span></div>
+      <div class="row"><span class="role">National spot — principal</span><span class="meta">2d left</span></div>
+      <div class="row"><span class="role">Stage — supporting</span><span class="meta">new</span></div>
+    </div>
+  </section>
+</body>
+</html>

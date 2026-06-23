@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bad — baseline (reproduces the failures)</title>
+<style>
+  :root { --bg:#1a1614; --lowtext:#463c34; --dimaccent:#5a3a28; }
+  * { margin:0; box-sizing:border-box; }
+  body { background:var(--bg); font-family: Georgia, serif; }
+  .nav { display:flex; justify-content:space-between; padding:24px 40px; color:#463c34; font:600 14px ui-monospace,monospace; }
+  .hero { min-height:88vh; padding:120px 40px; }
+  .eyebrow { color:var(--dimaccent); font:400 13px ui-monospace,monospace; letter-spacing:.2em; }
+  .headline { color:var(--lowtext); font-size:80px; line-height:1.05; max-width:560px; margin-top:24px; }
+  .spacer { width:120vw; height:1px; }
+</style>
+</head>
+<body>
+  <div class="nav"><span>ROCKETMINDS</span><span>Get started</span></div>
+  <section class="hero">
+    <div class="eyebrow">FOR ACTORS</div>
+    <h1 class="headline">Get seen by the people who decide who gets the call back today</h1>
+  </section>
+  <div class="spacer"></div>
+</body>
+</html>

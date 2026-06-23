@@ -22,3 +22,9 @@ The machine owns this floor; the human owns the taste call (pick from candidates
 ## Brand-agnostic
 `extract.js` and `floor_check.py` know nothing about any brand. The brand kit only informs the
 builder (constraints) and the human's taste judgment, not the objective floor.
+
+## Known limitation
+When `extract.js` is run through an MCP `execute_javascript` bridge, the returned string can be
+truncated by the tool's output cap on large pages. Mitigations: keep `text` slices short (done),
+and for big pages run extract per-section, or write the JSON to a local writable sink rather than
+returning it inline. Validate the captured JSON parses before running `floor_check.py`.
