@@ -25,3 +25,9 @@ references for the diff-vs-reference check. The rest are the memory-library back
 - **Symphony of Vines** — cinematic 3D that stays editorial, if going bold.
 
 ★ = seed vision references for the floor loop.
+
+## Captures (local, gitignored)
+Screenshots live in `exemplars/captures/` (NOT committed — third-party site captures stay local). Refresh
+with `node engine/floor/capture-refs.mjs`. Current corpus: 12/14 captured (linear, zed, tesla, arc, raycast,
+polestar, teenage-engineering, oura, stripe, tresmares, lando-norris, dropbox-brand). Unresolved: **Exat**
+(obscure URL — add it to `capture-refs.mjs` if you have it). The DNA rules above cover all 14 regardless.

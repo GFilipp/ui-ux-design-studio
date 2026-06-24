@@ -6,6 +6,9 @@ floor.*.json
 samples/*.png
 samples/*.jpeg
 
+# reference captures: third-party site screenshots stay local (copyright + size); only INDEX.md is committed
+exemplars/captures/
+
 # real / proprietary brand kits — the engine ships only the example profile
 brand-kits/*
 !brand-kits/SCHEMA.md
