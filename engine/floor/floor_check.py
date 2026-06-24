@@ -86,17 +86,25 @@ def check_assets(images):
     ]
 
 
-def evaluate(data, require_assets=False):
+def evaluate(data, require_assets=False, allow_indeterminate=False):
     nodes = data.get("textNodes", [])
     cfails, cindet = check_contrast(nodes)
     orphans = check_orphans(nodes)
     layout = check_layout(data.get("overflow", {}))
     broken = check_assets(data.get("images", []))
-    blocking = bool(cfails or orphans or layout or (require_assets and broken))
+    # Indeterminate = text over a background image; not a silent pass. It blocks as "review"
+    # (the human overrides in run_state if the overlay is genuinely readable) unless explicitly allowed.
+    if cfails:
+        contrast_status = "fail"
+    elif cindet and not allow_indeterminate:
+        contrast_status = "review"
+    else:
+        contrast_status = "pass"
+    blocking = bool(contrast_status in ("fail", "review") or orphans or layout or (require_assets and broken))
     return {
         "passed": not blocking,
         "gates": {
-            "contrast": {"status": "fail" if cfails else "pass",
+            "contrast": {"status": contrast_status,
                          "failures": cfails, "indeterminate": cindet},
             "orphans": {"status": "fail" if orphans else "pass", "failures": orphans},
             "layout": {"status": "fail" if layout else "pass", "issues": layout},
@@ -119,11 +127,13 @@ def main():
     ap.add_argument("--breakpoint", default="desktop")
     ap.add_argument("--require-assets", action="store_true",
                     help="fail if any visible img slot is empty/broken")
+    ap.add_argument("--allow-indeterminate", action="store_true",
+                    help="treat text-over-image (indeterminate contrast) as pass instead of review")
     ap.add_argument("--out", help="write result JSON to this path")
     a = ap.parse_args()
     with open(a.extract_json) as f:
         data = json.load(f)
-    result = evaluate(data, require_assets=a.require_assets)
+    result = evaluate(data, require_assets=a.require_assets, allow_indeterminate=a.allow_indeterminate)
     result["breakpoint"] = a.breakpoint
     out = json.dumps(result, indent=2)
     if a.out:

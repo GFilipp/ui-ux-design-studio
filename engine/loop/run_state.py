@@ -10,6 +10,8 @@ Usage:
   run_state.py gate   --file design-run.json --name contrast --status pass|fail [--detail '...']
   run_state.py override --file design-run.json --gate contrast --reason "deadline; ship anyway"
   run_state.py ship-check --file design-run.json     # exit 0 ship-ok, 3 blocked
+  run_state.py done   --file design-run.json          # finalize: all gates pass -> remove the file
+  run_state.py cancel --file design-run.json          # ABORT: remove the file so the Stop hook stops gating
 """
 import argparse
 import json
@@ -96,6 +98,32 @@ def cmd_ship_check(a):
     sys.exit(0)
 
 
+def cmd_cancel(a):
+    # Abort path: remove the live run file so the global Stop hook stops gating this directory.
+    if os.path.exists(a.file):
+        os.remove(a.file)
+        print("run cancelled; %s removed. The Stop hook no longer gates this directory." % a.file)
+    else:
+        print("no active run at %s; nothing to cancel." % a.file)
+    sys.exit(0)
+
+
+def cmd_done(a):
+    # Finalize a passing run: refuse if any gate is still halted, else remove the file (run complete).
+    state = load(a.file)
+    halted = [g for g, v in state["gates"].items() if v["status"] == "halted"]
+    if halted:
+        sys.stderr.write("cannot finalize: halted gate(s): %s. Pass them, log an override, or run `cancel`.\n" % ", ".join(halted))
+        sys.exit(3)
+    overrides = [g for g, v in state["gates"].items() if v["status"] == "overridden"]
+    os.remove(a.file)
+    msg = "run finalized for '%s'; %s removed." % (state.get("project"), a.file)
+    if overrides:
+        msg += " Shipped with override(s): %s." % ", ".join(overrides)
+    print(msg)
+    sys.exit(0)
+
+
 def main():
     ap = argparse.ArgumentParser(description="design-run fail-loud state machine")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -112,6 +140,10 @@ def main():
     p.add_argument("--gate", required=True); p.add_argument("--reason", required=True); p.set_defaults(fn=cmd_override)
 
     p = sub.add_parser("ship-check"); p.add_argument("--file", required=True); p.set_defaults(fn=cmd_ship_check)
+
+    p = sub.add_parser("done"); p.add_argument("--file", required=True); p.set_defaults(fn=cmd_done)
+
+    p = sub.add_parser("cancel"); p.add_argument("--file", required=True); p.set_defaults(fn=cmd_cancel)
 
     a = ap.parse_args()
     a.fn(a)
