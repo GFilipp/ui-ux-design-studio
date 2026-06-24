@@ -1,29 +1,26 @@
 ---
 name: design-studio
-description: Brand-agnostic UI/UX build command. Use to build a website, app UI screen, landing page, or marketing asset to a quality floor with a human taste pick. Loads a swappable brand kit, runs the render → screenshot → deterministic-floor → fix loop under a fail-loud guardrail contract, and presents divergent candidates to choose from. Triggers on "build a section/page/landing/screen", "design studio", "design this to the floor". Not for copy-only work (use brand-voice) or strategy.
+description: Build a beautiful, on-brand marketing asset (landing page, site, hero, social ad, one-pager, deck) for ANY brand through one enforced flow. Triggers on "build/design a landing page/site/hero/ad/social/one-pager/deck", "marketing asset", "design studio", "make this beautiful / on-brand". Forces a human-approved brief before any build, builds with real component libraries (never hand-coded), never fabricates content, and ends on a human pick. Not for copy-only work (use brand-voice) or strategy.
 ---
 
 # design-studio
 
-The manual on-ramp to the design pod. One invocation runs the whole pipeline so you stop re-prompting each step.
+The ONE path to a beautiful marketing asset. Not bypassable: no hand-cranked mockups, no fabricated content, no leading with features. This is what makes the output good and repeatable instead of a 15-round hand-cranking session.
 
-## Inputs (the command will HALT and ask for any that is missing — never defaulted)
-- **brand kit** — path to a brand-kit profile (see `brand-kits/SCHEMA.md`). No kit → halt.
-- **surface** — web | app | marketing-asset | deck.
-- **references** — ≥3 exemplar screenshots. Fewer → halt.
-- **brief** — what to build (section/page/asset + intent).
+Engine root: `/Users/garyfilipp/Documents/Claude/ui-ux-design-studio`
+**FIRST read `RULES.md` at the engine root and obey it. It overrides convenience.**
 
-## What it does
-1. `engine/loop/run_state.py init --file design-run.json --project <name> --surface <surface> --brand-kit <path>`.
-2. Hands off to the **design-pod** sub-agent, which builds 2-3 divergent directions within the brand tokens, runs the floor loop (desktop + mobile) until `engine/floor/floor_check.py` passes, and records each gate.
-3. Presents the floor-passing candidates as screenshots; **you pick** (the machine never auto-ships taste).
-4. `run_state.py ship-check` gates the finish and surfaces any logged overrides.
+## How to run
+Hand off to the **design-pod** subagent (`agents/design-pod.md` at the engine root) and run its five stages in order:
 
-## Defaults / rules
-- **Clean type first.** Imagery is generated only when it beats type-only and matches the kit. No slop.
-- **Brand-agnostic.** Swap the kit, get a different brand. RocketMinds is just one profile.
-- **Models** auto-discovered per task; never hardcoded.
-- **Fail loud.** Any missing input or failed gate halts and asks; the only way past is a logged override with a reason.
+0. **Ground** — load the brand kit + real sources. No kit or no real sources -> halt and ask. No fabrication.
+1. **Brief lock** — produce the one-page brief (`engine/brief/brief-template.md`): value in CUSTOMER-OUTCOME terms (profit, growth, time, money), the story spine, the visual direction, the DON'TS. Human approves ONCE. No build until `run_state.py brief-ok` exits 0.
+2. **Build with real components** — the component-scout pulls real components (Aceternity / 21st / shadcn / Flowbite); build in the asset's real repo with real motion. Never hand-coded HTML, never amateur graphics.
+3. **Floor + brief-conformance + pick** — mobile-first floor (`engine/floor/render.mjs` then `engine/floor/floor_check.py`, 390 then 1440); confirm the brief is met and no DON'TS broken; present candidates; the human picks one.
+4. **Ship** — `run_state.py ship-check`, integrate, deploy by git push, `run_state.py done`.
 
-## Compose, don't rebuild
-Uses installed skills: `web-artifacts-builder` / `canvas-design` / `rocketminds-slide-generator` (build), `design:design-critique` + `design:accessibility-review` (floor corroboration), `rocketminds-brand-voice` or the kit's voice skill (copy). Hosted on the `a-biz-d-delivery` / off-ramp spine.
+## Inputs (halt and ask if missing)
+brand kit (path); the asset + audience; real source material.
+
+## Hard rules (RULES.md, non-negotiable)
+No going rogue; brief before pixels; real components not hand-coded; no fabrication; lead with value not features; tell a story; never neg the customer; no em dashes; no walls of text; the human owns the taste pick.

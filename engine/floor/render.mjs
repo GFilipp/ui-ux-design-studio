@@ -41,10 +41,26 @@ try {
 
 const results = [];
 for (const t of targets) {
-  const ctx = await browser.newContext(t.opts);
+  const ctx = await browser.newContext({ ...t.opts, reducedMotion: "reduce" });
   const page = await ctx.newPage();
   await page.goto(url, { waitUntil: "networkidle" });
-  await page.waitForTimeout(400); // let fonts / reveal-on-scroll settle
+  await page.waitForTimeout(400); // let fonts settle
+  // Scroll through to trigger IntersectionObserver reveals + JS-injected content, then return to top.
+  // (Motion pages hide content until in-view; without this the floor would check an empty page.
+  //  reducedMotion:'reduce' makes well-built pages show their final resting state immediately.)
+  await page.evaluate(async () => {
+    await new Promise((res) => {
+      let y = 0;
+      const step = () => {
+        y += Math.max(300, window.innerHeight * 0.8);
+        window.scrollTo(0, y);
+        if (y < document.body.scrollHeight) setTimeout(step, 120);
+        else { window.scrollTo(0, 0); setTimeout(res, 300); }
+      };
+      step();
+    });
+  });
+  await page.waitForTimeout(700); // let revealed / injected content settle
   const json = await page.evaluate(extractSrc); // extract.js is a self-invoking expression
   const extractPath = join(outDir, `extract-${t.bp}.json`);
   writeFileSync(extractPath, typeof json === "string" ? json : JSON.stringify(json));

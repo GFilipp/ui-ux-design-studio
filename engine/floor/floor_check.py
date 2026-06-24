@@ -63,6 +63,10 @@ def check_orphans(nodes):
     for n in nodes:
         if n.get("lastLineWords") != 1 or n.get("totalWords", 0) <= 1:
             continue
+        # Orphans apply to BLOCK-LEVEL display text (headings/standalone lines), not inline
+        # emphasis (<b>/<em>/<span>) or labels inside flowing text.
+        if n.get("display") == "inline":
+            continue
         heading_like = is_large(n.get("fontSize", 0), n.get("fontWeight", 400)) or n.get("totalWords", 0) <= 6
         if heading_like:
             out.append({"text": n["text"], "tag": n["tag"]})

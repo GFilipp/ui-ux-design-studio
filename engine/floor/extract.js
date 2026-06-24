@@ -12,15 +12,27 @@
   }
   // Walk ancestors to the first opaque background-color; note any background-image en route.
   function effectiveBg(el) {
-    var node = el, hadImage = false;
+    // Collect background layers from the element outward, then COMPOSITE semi-transparent
+    // layers over the first opaque ancestor (or white). Without this, a tint like
+    // rgba(254,108,45,.06) over a dark page reads as solid orange -> false contrast fails.
+    var node = el, hadImage = false, layers = [];
     while (node && node.nodeType === 1) {
       var cs = getComputedStyle(node);
       if (cs.backgroundImage && cs.backgroundImage !== "none") hadImage = true;
       var bg = rgbToArr(cs.backgroundColor);
-      if (bg && bg.a > 0) return { bg: bg, hadImage: hadImage };
+      if (bg && bg.a > 0) {
+        layers.push(bg);
+        if (bg.a >= 0.999) break; // opaque base reached
+      }
       node = node.parentElement;
     }
-    return { bg: { r: 255, g: 255, b: 255, a: 1 }, hadImage: hadImage };
+    var base = (layers.length && layers[layers.length - 1].a >= 0.999)
+      ? layers.pop() : { r: 255, g: 255, b: 255, a: 1 };
+    for (var i = layers.length - 1; i >= 0; i--) { // composite nearest-last, over the base
+      var s = layers[i], a = s.a;
+      base = { r: s.r * a + base.r * (1 - a), g: s.g * a + base.g * (1 - a), b: s.b * a + base.b * (1 - a), a: 1 };
+    }
+    return { bg: { r: base.r, g: base.g, b: base.b, a: 1 }, hadImage: hadImage };
   }
   function isVisible(el) {
     var cs = getComputedStyle(el);
@@ -87,6 +99,7 @@
       bgImage: eb.hadImage,
       fontSize: parseFloat(cs.fontSize),
       fontWeight: parseInt(cs.fontWeight) || 400,
+      display: cs.display,
       rect: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
       lastLineWords: lastLineWordCount(el),
       totalWords: txt.split(/\s+/).length

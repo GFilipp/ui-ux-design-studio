@@ -12,13 +12,14 @@ Usage:
   run_state.py ship-check --file design-run.json     # exit 0 ship-ok, 3 blocked
   run_state.py done   --file design-run.json          # finalize: all gates pass -> remove the file
   run_state.py cancel --file design-run.json          # ABORT: remove the file so the Stop hook stops gating
+  run_state.py brief-ok --file design-run.json        # exit 0 if the brief gate is locked (pass), else 3 (build blocked)
 """
 import argparse
 import json
 import os
 import sys
 
-GATES = ["brand_kit", "references", "assets", "contrast", "orphans", "layout", "responsive", "human_pick"]
+GATES = ["brand_kit", "brief", "references", "assets", "contrast", "orphans", "layout", "responsive", "human_pick"]
 
 
 def load(path):
@@ -124,6 +125,15 @@ def cmd_done(a):
     sys.exit(0)
 
 
+def cmd_brief_ok(a):
+    # Build gate: refuse to build until the human-approved brief is locked (Stage 1).
+    state = load(a.file)
+    if state["gates"].get("brief", {}).get("status") == "pass":
+        sys.exit(0)
+    sys.stderr.write("HALT: no locked brief. Run Stage 1 brief-lock and get human approval before any build.\n")
+    sys.exit(3)
+
+
 def main():
     ap = argparse.ArgumentParser(description="design-run fail-loud state machine")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -144,6 +154,8 @@ def main():
     p = sub.add_parser("done"); p.add_argument("--file", required=True); p.set_defaults(fn=cmd_done)
 
     p = sub.add_parser("cancel"); p.add_argument("--file", required=True); p.set_defaults(fn=cmd_cancel)
+
+    p = sub.add_parser("brief-ok"); p.add_argument("--file", required=True); p.set_defaults(fn=cmd_brief_ok)
 
     a = ap.parse_args()
     a.fn(a)
