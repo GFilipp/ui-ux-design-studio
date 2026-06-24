@@ -56,11 +56,17 @@ def check_contrast(nodes):
 
 
 def check_orphans(nodes):
-    return [
-        {"text": n["text"], "tag": n["tag"]}
-        for n in nodes
-        if n.get("lastLineWords") == 1 and n.get("totalWords", 0) > 1
-    ]
+    # An orphan (a single word alone on the last visual line) is a defect for HEADINGS and
+    # short display lines, not for natural body-paragraph rag. Only flag heading-like text:
+    # large/bold display type, or short blocks (<= 6 words). Long paragraphs are exempt.
+    out = []
+    for n in nodes:
+        if n.get("lastLineWords") != 1 or n.get("totalWords", 0) <= 1:
+            continue
+        heading_like = is_large(n.get("fontSize", 0), n.get("fontWeight", 400)) or n.get("totalWords", 0) <= 6
+        if heading_like:
+            out.append({"text": n["text"], "tag": n["tag"]})
+    return out
 
 
 def check_layout(overflow):

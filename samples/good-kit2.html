@@ -29,6 +29,13 @@
   .role { font-size:15px; color:var(--text); }
   .meta { font-size:13px; color:var(--muted); }
   .tag { font:600 12px system-ui,sans-serif; color:var(--accent); }
+  /* mobile-first: stack the hero, tighten gutters, scale the headline */
+  @media (max-width: 640px) {
+    .nav { padding:20px 24px; }
+    .hero { grid-template-columns:1fr; gap:32px; padding:40px 24px 56px; }
+    h1 { font-size:42px; }
+    .sub { font-size:16px; }
+  }
 </style>
 </head>
 <body>

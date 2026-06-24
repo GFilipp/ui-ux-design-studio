@@ -1,0 +1,24 @@
+{
+  "name": "ui-ux-design-studio",
+  "version": "1.0.0",
+  "description": "A **brand-agnostic** engine that makes an AI coding agent produce visual UI to an objective quality floor, with a human owning the taste call. Swap the brand kit, get a different brand from the same pipeline. No brand is hardcoded.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GFilipp/ui-ux-design-studio.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/GFilipp/ui-ux-design-studio/issues"
+  },
+  "homepage": "https://github.com/GFilipp/ui-ux-design-studio#readme",
+  "devDependencies": {
+    "playwright": "^1.61.1"
+  }
+}
