@@ -1,0 +1,29 @@
+{
+  "name": "Tegy (example profile — derived from the live product-landing design system)",
+  "status": "Derived from real production tokens in Tegy/Product Landing Page/src/tegy-design.css. Verify the logo asset + any token updates before production. Tegy is a RocketMinds product.",
+  "mode": "dark",
+  "color": {
+    "bg":         { "r": 23,  "g": 19,  "b": 18 },
+    "surface":    { "r": 28,  "g": 23,  "b": 20 },
+    "border":     { "r": 48,  "g": 42,  "b": 38 },
+    "text":       { "r": 250, "g": 250, "b": 250 },
+    "muted":      { "r": 184, "g": 184, "b": 184 },
+    "faint":      { "r": 107, "g": 101, "b": 96 },
+    "accent":     { "r": 254, "g": 108, "b": 45 },
+    "accentText": { "r": 255, "g": 255, "b": 255 },
+    "accent2":    { "r": 56,  "g": 187, "b": 199 }
+  },
+  "type": {
+    "display": { "family": "\"Lora\", Georgia, serif", "weights": [400, 600] },
+    "body":    { "family": "\"Space Mono\", ui-monospace, SFMono-Regular, monospace", "weights": [400, 500] },
+    "mono":    { "family": "\"JetBrains Mono\", ui-monospace, monospace" },
+    "scale":   [10, 11, 12, 15, 18, 28, 46]
+  },
+  "logo": { "wordmark": "TEGY", "asset": "EXTERNAL: provide path at run time; never committed" },
+  "voice": {
+    "skill": "rocketminds-brand-voice",
+    "tenets": ["direct and candid, no hype or buzzwords", "no em dashes; use periods/semicolons", "proof-gated, never invented metrics", "plain English over jargon"]
+  },
+  "motifs": ["blueprint grid lines + diamonds/squares (thin, low-opacity)", "mono eyebrows + labels, UPPERCASE, wide tracking (0.16-0.24em)", "sharp corners (no border-radius) on buttons/cards", "subtle reveal-on-scroll, respects prefers-reduced-motion"],
+  "dna_rubric": "dna-rubric.md"
+}
