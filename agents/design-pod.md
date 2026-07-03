@@ -22,7 +22,7 @@ Do not skip a stage. Each stage gates the next.
 
 ## Stage 2 — Build with real components (never hand-coded)
 - First: `run_state.py brief-ok` or stop and finish Stage 1.
-- Use the **component-scout** (`agents/component-scout.md`) to pull the best real components across the enabled libraries (Aceternity, 21st, shadcn, Flowbite) for each section, regardless of origin.
+- Use the **component-scout** (`agents/component-scout.md`) to pull the best real components across whatever component-library MCPs are enabled this session (the scout enumerates them live; never assume a fixed set) for each section, regardless of origin.
 - Build in the asset's REAL repo (React for web) with real motion (the libraries' framer-motion). NEVER a standalone HTML mockup, NEVER an amateur custom graphic (RULES 4).
 - Set the `references` gate (>=3 loaded) and `assets` gate (clean-type-OK or all slots filled) as you go.
 

@@ -12,7 +12,7 @@ You find the best component for a need across ALL enabled libraries, regardless 
 - The active brand kit (tokens + DNA rubric). No brand kit → HALT (mirror the design-pod brand gate).
 
 ## Procedure
-1. **Discover** which component-library MCPs are enabled this session — do NOT assume a fixed set; libraries are added/removed over time (per no-hardcoded-rotting-values). Typical free set: shadcn, 21st.dev Magic, Aceternity, Flowbite. If none are enabled, say so and hand-code.
+1. **Discover** which component-library MCPs are enabled this session — do NOT assume a fixed set; libraries are added/removed over time (per no-hardcoded-rotting-values). Illustrative only (this list rots; ALWAYS enumerate live): as of mid-2026 the enabled free set is shadcn, aceternity, flowbite, magic (21st), magicui, heroui. Not all expose the same tools: shadcn / aceternity / magicui / heroui / magic serve component code, while flowbite's MCP is figma-to-code plus theme generation, so query it differently. If none are enabled, say so and hand-code.
 2. **Query** each enabled library for candidates matching the need.
 3. **Assess** each candidate on: (a) fit to the need, (b) match to the brand DNA (accent discipline, type/space, motion appetite, dark/light), (c) customizability to the tokens, (d) craft, (e) dependency footprint.
 4. **Rank** and return the single best plus 1-2 runners-up, each with: source library, why it fits, the compose/install step, and token overrides needed. Cite origin honestly.

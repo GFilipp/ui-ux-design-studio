@@ -8,7 +8,7 @@ These are the non-negotiable rules for the design tool. They are the distilled f
 3. **Front-load, do not babysit.** The human approves a brief once and picks a winner once. Do not seek line-by-line correction. Get the brief right, then execute to it.
 
 ## Build
-4. **Real components, never hand-coded.** Build in the asset's real repo using real components from the enabled libraries (Aceternity, 21st, shadcn, Flowbite) with real motion. Never ship a hand-coded standalone HTML mockup or an amateur custom graphic as the deliverable.
+4. **Real components, never hand-coded.** Build in the asset's real repo using real components from whatever component-library MCPs are enabled this session (enumerated live by the scout, never a hardcoded list) with real motion. Never ship a hand-coded standalone HTML mockup or an amateur custom graphic as the deliverable.
 5. **Visual-first.** The visual carries the asset. Minimal words. No walls of text.
 
 ## Content
