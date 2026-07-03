@@ -26,5 +26,14 @@ A profile is a directory containing:
 | `voice` | `{skill, tenets[]}` — which brand-voice profile governs copy |
 | `dna_rubric` | relative path to the rubric file |
 
+Optional keys (used when the brand needs them):
+
+| Key | Meaning |
+|---|---|
+| `status` | provenance note: where the values came from + what to verify before production use |
+| `color.border`, `color.faint`, `color.accent2` | extended palette: hairline borders, tertiary text, a sparse secondary accent |
+| `type.mono` | third face for labels/eyebrows/code when it differs from `body` |
+| `motifs` | signature visual devices as strings (e.g. blueprint grid, sharp corners, reveal-on-scroll) |
+
 Real / proprietary kits (RocketMinds, clients, garyflip, tegy) live OUTSIDE this repo as
 external inputs. The repo ships ONE example profile to document the format.

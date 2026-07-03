@@ -43,7 +43,27 @@ const results = [];
 for (const t of targets) {
   const ctx = await browser.newContext({ ...t.opts, reducedMotion: "reduce" });
   const page = await ctx.newPage();
-  await page.goto(url, { waitUntil: "networkidle" });
+  // Capture runtime errors: the floor gates on "no console errors" (pageerror = uncaught JS,
+  // console.error = logged errors). Collected per breakpoint and merged into the extract JSON.
+  const consoleLog = { pageErrors: 0, consoleErrors: 0, samples: [] };
+  page.on("pageerror", (err) => {
+    consoleLog.pageErrors++;
+    if (consoleLog.samples.length < 5) consoleLog.samples.push("pageerror: " + String(err).split("\n")[0].slice(0, 160));
+  });
+  page.on("console", (msg) => {
+    if (msg.type() === "error") {
+      consoleLog.consoleErrors++;
+      if (consoleLog.samples.length < 5) consoleLog.samples.push("console.error: " + msg.text().slice(0, 160));
+    }
+  });
+  // networkidle is ideal but can time out on live sites with long-polling/analytics;
+  // fall back once to domcontentloaded + a settle wait.
+  try {
+    await page.goto(url, { waitUntil: "networkidle", timeout: 20000 });
+  } catch {
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.waitForTimeout(1500);
+  }
   await page.waitForTimeout(400); // let fonts settle
   // Scroll through to trigger IntersectionObserver reveals + JS-injected content, then return to top.
   // (Motion pages hide content until in-view; without this the floor would check an empty page.
@@ -63,7 +83,14 @@ for (const t of targets) {
   await page.waitForTimeout(700); // let revealed / injected content settle
   const json = await page.evaluate(extractSrc); // extract.js is a self-invoking expression
   const extractPath = join(outDir, `extract-${t.bp}.json`);
-  writeFileSync(extractPath, typeof json === "string" ? json : JSON.stringify(json));
+  // Merge the console capture into the extract so floor_check gates on it.
+  let extractOut = typeof json === "string" ? json : JSON.stringify(json);
+  try {
+    const parsed = JSON.parse(extractOut);
+    parsed.console = consoleLog;
+    extractOut = JSON.stringify(parsed);
+  } catch {}
+  writeFileSync(extractPath, extractOut);
   const shotPath = join(outDir, `shot-${t.bp}.png`);
   await page.screenshot({ path: shotPath, fullPage: true });
   let vp = null;

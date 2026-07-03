@@ -23,4 +23,4 @@ Hand off to the **design-pod** subagent (`agents/design-pod.md` at the engine ro
 brand kit (path); the asset + audience; real source material.
 
 ## Hard rules (RULES.md, non-negotiable)
-No going rogue; brief before pixels; real components not hand-coded; no fabrication; lead with value not features; tell a story; never neg the customer; no em dashes; no walls of text; the human owns the taste pick.
+No going rogue; brief before pixels; real components not hand-coded; no fabrication; lead with value not features; tell a story; never neg the customer; em dashes rarely; no walls of text; the human owns the taste pick.

@@ -18,7 +18,7 @@ These are the non-negotiable rules for the design tool. They are the distilled f
 9. **Never neg the customer.** No "you can't afford it," no poverty framing. Frame the customer as capable and ambitious; the asset is their edge.
 
 ## Style
-10. **No em dashes.** Use periods, commas, semicolons, colons.
+10. **Em dashes rarely, never as the default connector.** An occasional em dash is fine; a pileup is the AI tell. Prefer periods, commas, semicolons, colons.
 11. **Honest, plain, no hype.** No buzzwords, no fake urgency, no unsupported claims.
 
 ## Quality

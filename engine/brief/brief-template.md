@@ -21,7 +21,7 @@ Fill this from REAL sources only (Stage 0). No fabrication. The human approves t
 
 ## 5. Hard DON'TS (from RULES.md, confirm each)
 - [ ] No negging the customer (no "you can't afford")
-- [ ] No em dashes
+- [ ] Em dashes rarely, never the default connector
 - [ ] No feature-tile lists
 - [ ] No fabricated content, metrics, or output
 - [ ] No walls of text

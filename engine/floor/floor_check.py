@@ -90,12 +90,30 @@ def check_assets(images):
     ]
 
 
+def check_console(data):
+    # Runtime errors captured by render.mjs (pageerror + console.error). Blocking when captured.
+    # Extracts without the key (older fixtures, extract.js run outside render.mjs) are "not-captured".
+    cons = data.get("console")
+    if cons is None:
+        return None, []
+    errors = int(cons.get("pageErrors", 0)) + int(cons.get("consoleErrors", 0))
+    return errors, cons.get("samples", [])
+
+
+def check_style(nodes):
+    # WARN-ONLY: rare em dashes are fine; a pileup is the AI tell. Never blocks.
+    n = sum(node.get("text", "").count("—") for node in nodes)
+    return n
+
+
 def evaluate(data, require_assets=False, allow_indeterminate=False):
     nodes = data.get("textNodes", [])
     cfails, cindet = check_contrast(nodes)
     orphans = check_orphans(nodes)
     layout = check_layout(data.get("overflow", {}))
     broken = check_assets(data.get("images", []))
+    console_errors, console_samples = check_console(data)
+    em_dashes = check_style(nodes)
     # Indeterminate = text over a background image; not a silent pass. It blocks as "review"
     # (the human overrides in run_state if the overlay is genuinely readable) unless explicitly allowed.
     if cfails:
@@ -104,7 +122,9 @@ def evaluate(data, require_assets=False, allow_indeterminate=False):
         contrast_status = "review"
     else:
         contrast_status = "pass"
-    blocking = bool(contrast_status in ("fail", "review") or orphans or layout or (require_assets and broken))
+    console_fail = console_errors is not None and console_errors > 0
+    blocking = bool(contrast_status in ("fail", "review") or orphans or layout
+                    or (require_assets and broken) or console_fail)
     return {
         "passed": not blocking,
         "gates": {
@@ -114,6 +134,14 @@ def evaluate(data, require_assets=False, allow_indeterminate=False):
             "layout": {"status": "fail" if layout else "pass", "issues": layout},
             "assets": {"status": "fail" if (require_assets and broken) else "pass",
                        "broken": broken},
+            "console": {"status": ("not-captured" if console_errors is None
+                                   else ("fail" if console_fail else "pass")),
+                        "errors": console_errors, "samples": console_samples},
+            # warn-only: never contributes to `passed`
+            "style": {"status": "warn" if em_dashes >= 3 else "pass",
+                      "em_dashes": em_dashes,
+                      "note": ("em-dash pileup (%d); rare is fine, this reads as the AI default connector" % em_dashes)
+                              if em_dashes >= 3 else None},
         },
         "summary": {
             "contrast_failures": len(cfails),
@@ -121,6 +149,8 @@ def evaluate(data, require_assets=False, allow_indeterminate=False):
             "orphans": len(orphans),
             "layout_issues": len(layout),
             "broken_assets": len(broken),
+            "console_errors": console_errors,
+            "em_dashes": em_dashes,
         },
     }
 

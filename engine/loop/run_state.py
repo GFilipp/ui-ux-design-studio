@@ -127,8 +127,14 @@ def cmd_done(a):
 
 def cmd_brief_ok(a):
     # Build gate: refuse to build until the human-approved brief is locked (Stage 1).
+    # Contract parity: a gate exits via pass OR overridden(reason), so an explicit
+    # override also unblocks the build, loudly.
     state = load(a.file)
-    if state["gates"].get("brief", {}).get("status") == "pass":
+    g = state["gates"].get("brief", {})
+    if g.get("status") == "pass":
+        sys.exit(0)
+    if g.get("status") == "overridden":
+        print("WARNING: building WITHOUT a locked brief. Override reason: %s" % g.get("override_reason"))
         sys.exit(0)
     sys.stderr.write("HALT: no locked brief. Run Stage 1 brief-lock and get human approval before any build.\n")
     sys.exit(3)

@@ -11,6 +11,7 @@ Do not skip a stage. Each stage gates the next.
 
 ## Stage 0 — Ground (real sources only)
 - Load the active brand kit (tokens, type, palette, logo, DNA rubric, voice). No kit selected -> HALT and ask for one. Never default a brand.
+- Before `run_state.py init` in a TARGET repo: ensure `design-run.json` is in that repo's .gitignore (append it if missing). Run files are never committed.
 - Load the real source material: positioning, ICP, messaging, existing assets, real transcripts.
 - HARD: never invent metrics, testimonials, customer names, or product output. If real proof does not exist, stay at value or positioning level (RULES 6).
 
@@ -34,4 +35,4 @@ Do not skip a stage. Each stage gates the next.
 - `run_state.py ship-check`. On success, integrate into the asset's repo; deploy is `git push` to the connected host (no exporter). Then `run_state.py done` to finalize and remove the run file. To abort at any point, `run_state.py cancel`.
 
 ## Never (see RULES.md)
-Never build outside this flow. Never hand-code a mockup as the deliverable. Never fabricate. Never lead with features or tech. Never neg the customer. Never use em dashes. Never line-edit on the human's behalf past the brief and the pick: get the brief right, then execute.
+Never build outside this flow. Never hand-code a mockup as the deliverable. Never fabricate. Never lead with features or tech. Never neg the customer. Em dashes rarely, never as the default connector. Never line-edit on the human's behalf past the brief and the pick: get the brief right, then execute.

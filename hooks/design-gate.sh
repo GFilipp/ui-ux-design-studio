@@ -33,5 +33,5 @@ fi
 
 echo "design-gate: floor not passed. Do not finish this build yet." >&2
 cat /tmp/design-gate.out >&2
-echo "Pass the halted gate(s) via the floor loop, or log an explicit override with a reason (engine/loop/run_state.py override ...)." >&2
+echo "Three exits: (1) if 'brief' is halted, lock the human-approved brief first (Stage 1; run_state.py gate --name brief --status pass); (2) pass the failing gates via the floor loop or log an explicit override (run_state.py override --gate <g> --reason '...'); (3) abort the run entirely (run_state.py cancel --file design-run.json)." >&2
 exit 2
