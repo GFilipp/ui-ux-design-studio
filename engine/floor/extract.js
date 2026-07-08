@@ -60,6 +60,12 @@
   }
   // Count words sharing the top of the last visual line. 1 word alone => orphan.
   function lastLineWordCount(el) {
+    // React SSR separates adjacent text parts with comment nodes; strip them so
+    // normalize() can merge the parts back into one measurable text node.
+    for (var ci = el.childNodes.length - 1; ci >= 0; ci--) {
+      if (el.childNodes[ci].nodeType === 8) el.removeChild(el.childNodes[ci]);
+    }
+    el.normalize(); // merge adjacent text nodes (React splits {a}{'\u00A0'}{b} into 3)
     var tn = singleTextNode(el);
     if (!tn) return null;
     var text = tn.nodeValue;
