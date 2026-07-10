@@ -81,7 +81,11 @@
       var r = document.createRange();
       r.setStart(tn, m.index);
       r.setEnd(tn, m.index + m[0].length);
-      if (Math.abs(r.getBoundingClientRect().top - lastTop) <= 2) count++;
+      // A word broken across lines (soft hyphen break) renders partly on the
+      // last line; attribute it to its LAST rect, not its bounding top.
+      var wrects = r.getClientRects();
+      var wtop = wrects.length ? wrects[wrects.length - 1].top : r.getBoundingClientRect().top;
+      if (Math.abs(wtop - lastTop) <= 2) count++;
     }
     return count;
   }
@@ -123,9 +127,18 @@
   }
   var de = document.documentElement;
   var off = 0;
+  function insideClip(el) {
+    // A node whose ancestor clips horizontally (overflow hidden/clip) cannot
+    // widen the page; masked marquees and clipped decorations are legal.
+    for (var a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+      var ox = getComputedStyle(a).overflowX;
+      if (ox === "hidden" || ox === "clip") return true;
+    }
+    return false;
+  }
   for (var b = 0; b < all.length; b++) {
     var rr = all[b].getBoundingClientRect();
-    if (rr.width > 0 && rr.left > window.innerWidth + 1) off++;
+    if (rr.width > 0 && rr.left > window.innerWidth + 1 && !insideClip(all[b])) off++;
   }
   report.overflow = {
     docScrollW: de.scrollWidth,
