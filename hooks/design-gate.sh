@@ -27,7 +27,69 @@ else
   exit 2
 fi
 
+# Anti-hand-drawing backstop. Runs an INDEPENDENT source scan of the target repo's changed
+# files, regardless of the gate statuses the model set (reconcile, do not trust). A build that
+# hand-drew cannot park at human_pick or ship on a green gate it set itself.
+DCHECK="$(dirname "$STATE")/../floor/drawing_check.py"
+if [ ! -f "$DCHECK" ]; then
+  echo "design-gate: WARNING — drawing_check.py not found next to run_state.py; the anti-drawing backstop did NOT run this turn." >&2
+fi
+if [ -f "$DCHECK" ]; then
+  # `|| DRC=$?` keeps the non-zero scan exit from tripping `set -e` before we branch on it.
+  DRC=0
+  python3 "$DCHECK" --git-diff --root . --run-file "$RUN_FILE" >/tmp/design-drawing.out 2>&1 || DRC=$?
+  if [ "$DRC" = "3" ]; then
+    echo "design-gate: HAND-DRAWING detected — canvas 2D drawing in authored source. This is NOT overridable." >&2
+    cat /tmp/design-drawing.out >&2
+    echo "Replace it with a real component (e.g. an aceternity/magicui background), generated imagery (mcp-image), or clean type + tokens, then continue." >&2
+    exit 2
+  elif [ "$DRC" = "2" ]; then
+    # Soft finding (illustration-scale SVG). Allowed ONLY if no_drawing is explicitly overridden with a reason.
+    OVR=$(python3 - "$RUN_FILE" <<'PY'
+import json, sys
+try:
+    g = json.load(open(sys.argv[1])).get("gates", {}).get("no_drawing", {})
+    print("yes" if (g.get("status") if isinstance(g, dict) else g) == "overridden" else "no")
+except Exception:
+    print("no")
+PY
+)
+    if [ "$OVR" != "yes" ]; then
+      echo "design-gate: hand-authored illustration-scale SVG in authored source (the no_drawing gate reads clean or is stale; the scan is authoritative)." >&2
+      cat /tmp/design-drawing.out >&2
+      echo "Source it from a component library, mcp-image, or a real brand asset. If genuinely intentional, log: run_state.py override --gate no_drawing --reason '...'." >&2
+      exit 2
+    fi
+  elif [ "$DRC" != "0" ]; then
+    # Scanner error (missing dep, bad args). Do not wedge every session; warn loudly and continue.
+    echo "design-gate: WARNING — drawing_check did not run cleanly (exit $DRC); skipping the drawing backstop this turn." >&2
+    cat /tmp/design-drawing.out >&2
+  fi
+fi
+
 if python3 "$STATE" ship-check --file "$RUN_FILE" >/tmp/design-gate.out 2>&1; then
+  exit 0
+fi
+
+# Legitimate resting state: every model-fixable gate is resolved and the ONLY
+# halted gate is human_pick. The taste pick belongs to the human (RULES 12);
+# the model must neither pass nor override it, so blocking the stop here would
+# deadlock the loop. Allow the stop; ship-check still blocks Stage 4 until the
+# human picks, so no enforcement is lost.
+ONLY_PICK=$(python3 - "$RUN_FILE" <<'PY'
+import json, sys
+try:
+    s = json.load(open(sys.argv[1]))
+    gates = s.get("gates", {})
+    halted = {n for n, g in gates.items() if (g.get("status") if isinstance(g, dict) else g) not in ("pass", "overridden")}
+    brief_ok = (gates.get("brief", {}).get("status") if isinstance(gates.get("brief"), dict) else gates.get("brief")) in ("pass", "overridden")
+    print("yes" if brief_ok and halted == {"human_pick"} else "no")
+except Exception:
+    print("no")
+PY
+)
+if [ "$ONLY_PICK" = "yes" ]; then
+  echo "design-gate: parked at human_pick (all other gates resolved). Present the candidates and get the human's pick; shipping stays blocked until then." >&2
   exit 0
 fi
 

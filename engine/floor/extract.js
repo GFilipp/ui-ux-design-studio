@@ -146,5 +146,32 @@
     horizontal: de.scrollWidth - de.clientWidth > 1,
     offscreenRight: off
   };
+  // Graphics census — WARN-ONLY signal for the human pick. At runtime a library's animated-SVG
+  // background is indistinguishable from a hand-drawn one (no import info in the DOM), so this
+  // NEVER blocks; source-level provenance enforcement lives in drawing_check.py. It surfaces
+  // "confirm these large SVGs / canvases are library or generated, not hand-drawn" at Stage 3.
+  var vpArea = window.innerWidth * window.innerHeight;
+  var svgs = [], canvases = [];
+  var svgEls = document.querySelectorAll("svg");
+  for (var s = 0; s < svgEls.length; s++) {
+    var sv = svgEls[s];
+    if (!isVisible(sv)) continue;
+    if (sv.parentNode && sv.parentNode.nodeType === 1 && sv.parentNode.closest && sv.parentNode.closest("svg")) continue; // outermost only
+    var sr = sv.getBoundingClientRect();
+    svgs.push({
+      w: Math.round(sr.width), h: Math.round(sr.height),
+      areaPct: vpArea ? Math.round((sr.width * sr.height) / vpArea * 100) : 0,
+      shapes: sv.querySelectorAll("path,rect,circle,polygon,polyline,ellipse,line").length
+    });
+  }
+  var canvasEls = document.querySelectorAll("canvas");
+  for (var c = 0; c < canvasEls.length; c++) {
+    var cv = canvasEls[c];
+    if (!isVisible(cv)) continue;
+    var cr = cv.getBoundingClientRect();
+    canvases.push({ w: Math.round(cr.width), h: Math.round(cr.height),
+      areaPct: vpArea ? Math.round((cr.width * cr.height) / vpArea * 100) : 0 });
+  }
+  report.graphics = { svgs: svgs, canvases: canvases };
   return JSON.stringify(report);
 })();

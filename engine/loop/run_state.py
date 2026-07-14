@@ -17,9 +17,35 @@ Usage:
 import argparse
 import json
 import os
+import subprocess
 import sys
 
-GATES = ["brand_kit", "brief", "references", "assets", "contrast", "orphans", "layout", "responsive", "human_pick"]
+GATES = ["brand_kit", "brief", "references", "assets", "no_drawing", "contrast", "orphans", "layout", "responsive", "human_pick"]
+
+
+def git_head(cwd):
+    # Baseline SHA for the drawing_check git-diff. None if the target is not a git repo yet.
+    try:
+        p = subprocess.run(["git", "rev-parse", "HEAD"], cwd=cwd, capture_output=True, text=True)
+        return p.stdout.strip() if p.returncode == 0 and p.stdout.strip() else None
+    except (FileNotFoundError, OSError):
+        return None
+
+
+def drawing_hard(run_file):
+    # Non-overridable canvas hard-block, enforced at finalize too (not just the Stop hook):
+    # a model could override no_drawing then `done`, and the hook no-ops once the run file is gone.
+    dc = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "floor", "drawing_check.py")
+    if not os.path.exists(dc):
+        return False
+    repo_dir = os.path.dirname(os.path.abspath(run_file)) or "."
+    try:
+        p = subprocess.run([sys.executable, dc, "--git-diff", "--root", ".",
+                            "--run-file", os.path.abspath(run_file)],
+                           cwd=repo_dir, capture_output=True, text=True)
+        return p.returncode == 3
+    except (FileNotFoundError, OSError):
+        return False
 
 
 def load(path):
@@ -39,16 +65,20 @@ def cmd_init(a):
     if not os.path.exists(a.brand_kit):
         sys.stderr.write("HALT: brand kit not found: %s\n" % a.brand_kit)
         sys.exit(3)
+    repo_dir = os.path.dirname(os.path.abspath(a.file)) or "."
     state = {
         "project": a.project,
         "surface": a.surface,
         "brand_kit": a.brand_kit,
         "references": [],
+        "base_sha": git_head(repo_dir),
+        "vendored": [],
         "gates": {g: {"status": "halted", "detail": None, "override_reason": None} for g in GATES},
     }
     state["gates"]["brand_kit"] = {"status": "pass", "detail": a.brand_kit, "override_reason": None}
     save(a.file, state)
-    print("initialized run for '%s' (%s) with brand kit %s" % (a.project, a.surface, a.brand_kit))
+    print("initialized run for '%s' (%s) with brand kit %s (base_sha=%s)"
+          % (a.project, a.surface, a.brand_kit, state["base_sha"] or "n/a"))
 
 
 def cmd_gate(a):
@@ -116,6 +146,9 @@ def cmd_done(a):
     if halted:
         sys.stderr.write("cannot finalize: halted gate(s): %s. Pass them, log an override, or run `cancel`.\n" % ", ".join(halted))
         sys.exit(3)
+    if drawing_hard(a.file):
+        sys.stderr.write("cannot finalize: hand-drawn <canvas> detected in the build (non-overridable, even with a no_drawing override). Remove it and source the visual from a component, mcp-image, or clean type.\n")
+        sys.exit(3)
     overrides = [g for g, v in state["gates"].items() if v["status"] == "overridden"]
     os.remove(a.file)
     msg = "run finalized for '%s'; %s removed." % (state.get("project"), a.file)
@@ -123,6 +156,17 @@ def cmd_done(a):
         msg += " Shipped with override(s): %s." % ", ".join(overrides)
     print(msg)
     sys.exit(0)
+
+
+def cmd_vendored(a):
+    # Record files/dirs written by component-library installs so drawing_check exempts them
+    # (their raw svg/canvas is sanctioned copy-paste, not hand-drawing).
+    state = load(a.file)
+    state.setdefault("vendored", [])
+    added = [p for p in (a.add or []) if p and p not in state["vendored"]]
+    state["vendored"].extend(added)
+    save(a.file, state)
+    print("vendored paths recorded (+%d, total %d): %s" % (len(added), len(state["vendored"]), ", ".join(added) or "(none)"))
 
 
 def cmd_brief_ok(a):
@@ -160,6 +204,9 @@ def main():
     p = sub.add_parser("done"); p.add_argument("--file", required=True); p.set_defaults(fn=cmd_done)
 
     p = sub.add_parser("cancel"); p.add_argument("--file", required=True); p.set_defaults(fn=cmd_cancel)
+
+    p = sub.add_parser("vendored"); p.add_argument("--file", required=True)
+    p.add_argument("--add", nargs="*", default=[]); p.set_defaults(fn=cmd_vendored)
 
     p = sub.add_parser("brief-ok"); p.add_argument("--file", required=True); p.set_defaults(fn=cmd_brief_ok)
 

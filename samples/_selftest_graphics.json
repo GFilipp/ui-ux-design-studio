@@ -1,0 +1,14 @@
+{
+  "viewport": { "w": 1440, "h": 900, "dpr": 2 },
+  "textNodes": [
+    { "tag": "h1", "text": "Less drag. More lift.", "color": { "r": 20, "g": 20, "b": 20 }, "bg": { "r": 255, "g": 255, "b": 255 }, "bgImage": false, "fontSize": 48, "fontWeight": 700, "display": "block", "rect": { "x": 40, "y": 120, "w": 800, "h": 60 }, "lastLineWords": 2, "totalWords": 4 }
+  ],
+  "images": [
+    { "src": "hero.png", "naturalWidth": 1600, "alt": "hero", "visible": true }
+  ],
+  "overflow": { "docScrollW": 1440, "clientW": 1440, "horizontal": false, "offscreenRight": 0 },
+  "graphics": {
+    "svgs": [ { "w": 1440, "h": 600, "areaPct": 66, "shapes": 14 } ],
+    "canvases": [ { "w": 400, "h": 300, "areaPct": 9 } ]
+  }
+}

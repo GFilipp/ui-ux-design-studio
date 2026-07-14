@@ -19,6 +19,44 @@ Format: `YYYY-MM-DD | brand | surface | WIN/KILL | what + why`
 2026-06-24 | engine | audit | FIX | Post-rebuild fresh-eyes audit (Fable): closed 3 real defects: (1) "no console errors" was promised but unchecked; render.mjs now captures pageerror + console.error per breakpoint and floor_check blocks on them (older extracts without the key report "not-captured"); (2) brief-ok now honors an overridden brief gate (contract parity: pass OR loud logged override), previously override was meaningless; (3) em-dash rule corrected per Gary: RARE is fine, pileup is the AI tell; RULES reworded + warn-only style note at 3+ em dashes (never blocks). Plus: hook message names the three exits (brief-lock / override / cancel), SCHEMA documents optional kit fields (status, motifs, border/faint/accent2, type.mono), PLAN.md replaced with the rebuild plan, render.mjs falls back networkidle -> domcontentloaded on live-site timeout, pod ensures design-run.json is gitignored in TARGET repos.
 2026-06-24 | engine | marketing-assets | FAIL then REBUILD | First live test (Tegy rebuild) failed entirely. Five root causes, each now structurally fixed: (1) the tool was a repo of scripts, never an installed skill, so I went rogue and hand-cranked HTML mockups (v1-v4); FIX: install as a real /design-studio skill, one path only. (2) no brief/value/story front-end, so endless correction; FIX: mandatory `brief` gate (run_state brief-ok) + engine/brief/brief-template.md, human approves once before any build. (3) hand-coded HTML cannot use the React component libraries, so never beautiful; FIX: RULES.md requires building with real components (Aceternity/21st/shadcn/Flowbite), never hand-coded. (4) fabricated product output presented as real; FIX: RULES.md forbids fabrication, real sources only. (5) constant babysitting; FIX: front-load to one brief approval + one pick. All hard rules in RULES.md, loaded by design-pod + skill. Tegy was the test case, not the subject; the tool is brand- and asset-agnostic.
 
+## 2026-07-14 — Aggressive, provenance-based anti-hand-drawing
+Goal: force components/mcp-image/type instead of Claude hand-drawing visuals.
+KEY INSIGHT (red-team overturned the naive fix): shape alone cannot tell a
+hand-drawn svg/canvas from a library one, because aceternity/magicui VENDOR raw
+`<svg>`/`<canvas>` into source. A naive "block raw svg" scanner fires hardest on
+the mandated libraries and rots into reflexive overrides. So provenance is the
+primary filter: scan only Claude-AUTHORED composition files; exempt vendored dirs
+(components.json aliases.ui + components/{ui,magicui,aceternity,motion-primitives}
++ install-manifest) and brand assets.
+Built: `engine/floor/drawing_check.py` (tiered — canvas getContext(2d)+draw
+primitive = HARD block, non-overridable exit 3; illustration-scale svg
+>=8 shapes / total d>=4000 / single d>=2500 = SOFT block, overridable exit 2;
+icons <=4 shapes & d<=1200 or viewBox<=32 never flag). `extract.js` adds a
+warn-only runtime graphics census (large svgs+canvases) that `floor_check.py`
+surfaces to the human pick (runtime cannot do provenance, so never blocks).
+`design-gate.sh` runs the scanner `--git-diff` INDEPENDENTLY as the reconciling
+backstop: it blocks even when the model set `no_drawing=pass` (anti-honor-system),
+inside the human_pick resting branch so the 2026-07-07 deadlock fix survives.
+New `no_drawing` gate + `base_sha` + `vendored[]` in run_state/schema.
+BUG caught in test: the hook's `set -e` killed the script on the scanner's
+non-zero exit before branching; fixed with `|| DRC=$?`. Out of scope (stated
+honestly in RULES): styled-div fake charts (no svg to detect) stay a human
+Stage-3 brief-conformance call.
+Codex cross-model review then closed 10 real bypasses before commit: (1) the
+shadcn `components` alias exempted all authored `src/components/**` (now only the
+specific `ui` alias, >=2 segments); (2) `vendored`/brand basename-matching exempted
+every same-named file repo-wide (now resolved-abspath prefix match only); (3) a
+model could override no_drawing then `done` to ship canvas (now `done` re-runs the
+scanner and refuses hard findings non-overridably); (4) missing scanner failed
+silently (now warns); (5) no-base + committed build missed everything (now
+ls-files full-tree fallback); plus canvas Path2D/`.fill()`/`.stroke()` detection,
+JSX `d={expr}` illustrations, `data:image/svg+xml;charset=,` decoded as base64
+garbage, `git -z` filename parsing, `.mdx`, and oversized-file warn. ACCEPTED with
+rationale (not fixed): deliberately moving art into a vendored dir evades by
+construction (provenance targets the lazy default, not an adversary who edits
+paths); soft-override authorizes the run (consistent with gate philosophy, reason
+already required); runtime census is warn-only advisory.
+
 ## 2026-07-07 — Stop-hook deadlock at the human-pick gate
 The design-gate Stop hook blocked EVERY turn-end while `human_pick` was the only
 halted gate. But RULES 12 + design-pod forbid the model from passing or

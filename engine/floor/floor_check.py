@@ -106,6 +106,23 @@ def check_style(nodes):
     return n
 
 
+def check_graphics(data):
+    # WARN-ONLY runtime census. Provenance is impossible at runtime (a library's animated-SVG
+    # background looks like hand-drawn art), so this NEVER blocks. Source-level enforcement is
+    # drawing_check.py; here we surface a mandatory human-review line for the Stage-3 pick.
+    g = data.get("graphics")
+    if g is None:
+        return {"status": "not-captured", "large_svgs": 0, "canvases": 0, "note": None}
+    big = [s for s in g.get("svgs", []) if s.get("areaPct", 0) >= 15 and s.get("shapes", 0) >= 6]
+    canvases = g.get("canvases", [])
+    if not big and not canvases:
+        return {"status": "pass", "large_svgs": 0, "canvases": 0, "note": None}
+    note = ("runtime census: %d large on-screen SVG(s) and %d canvas(es); CONFIRM these are library "
+            "components or mcp-image output, not hand-drawn (drawing_check.py enforces at source level)"
+            % (len(big), len(canvases)))
+    return {"status": "warn", "large_svgs": len(big), "canvases": len(canvases), "note": note}
+
+
 def evaluate(data, require_assets=False, allow_indeterminate=False):
     nodes = data.get("textNodes", [])
     cfails, cindet = check_contrast(nodes)
@@ -114,6 +131,7 @@ def evaluate(data, require_assets=False, allow_indeterminate=False):
     broken = check_assets(data.get("images", []))
     console_errors, console_samples = check_console(data)
     em_dashes = check_style(nodes)
+    graphics = check_graphics(data)
     # Indeterminate = text over a background image; not a silent pass. It blocks as "review"
     # (the human overrides in run_state if the overlay is genuinely readable) unless explicitly allowed.
     if cfails:
@@ -142,6 +160,8 @@ def evaluate(data, require_assets=False, allow_indeterminate=False):
                       "em_dashes": em_dashes,
                       "note": ("em-dash pileup (%d); rare is fine, this reads as the AI default connector" % em_dashes)
                               if em_dashes >= 3 else None},
+            # warn-only runtime census; drawing_check.py owns the blocking source-level gate
+            "drawing": graphics,
         },
         "summary": {
             "contrast_failures": len(cfails),
@@ -151,6 +171,8 @@ def evaluate(data, require_assets=False, allow_indeterminate=False):
             "broken_assets": len(broken),
             "console_errors": console_errors,
             "em_dashes": em_dashes,
+            "runtime_large_svgs": graphics["large_svgs"],
+            "runtime_canvases": graphics["canvases"],
         },
     }
 

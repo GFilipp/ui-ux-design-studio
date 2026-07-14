@@ -13,6 +13,15 @@
       "description": "exemplar reference screenshots fed to the builder + floor rubric (>=3 to pass the references gate)",
       "items": { "type": "string" }
     },
+    "base_sha": {
+      "type": ["string", "null"],
+      "description": "target-repo git HEAD at init; baseline for the drawing_check git-diff. null if the target is not a git repo"
+    },
+    "vendored": {
+      "type": "array",
+      "description": "files/dirs written by component-library installs; drawing_check exempts these (sanctioned copy-paste svg/canvas, not hand-drawing)",
+      "items": { "type": "string" }
+    },
     "gates": {
       "type": "object",
       "description": "one entry per gate",

@@ -18,6 +18,9 @@ Fill this from REAL sources only (Stage 0). No fabrication. The human approves t
 - References (the bar): <2 to 3 named exemplars, one line each on why>
 - Brand DNA (from the kit): <tokens, type, motion appetite, do and do-not>
 - The bar in one phrase: <e.g. concept-car, product-as-hero, editorial-minimal>
+- Visual sourcing plan (every planned visual maps to a real source; NO hand-drawing):
+    - <visual / section> -> <library:component | mcp-image | asset:path | type-only>
+    - <one line per hero and section visual; if a source is unknown, resolve it via the component-scout before building>
 
 ## 5. Hard DON'TS (from RULES.md, confirm each)
 - [ ] No negging the customer (no "you can't afford")
@@ -25,7 +28,8 @@ Fill this from REAL sources only (Stage 0). No fabrication. The human approves t
 - [ ] No feature-tile lists
 - [ ] No fabricated content, metrics, or output
 - [ ] No walls of text
-- [ ] No hand-coded amateur graphics; real components only
+- [ ] No hand-drawn svg / canvas / CSS-art / ASCII-emoji art; visuals come from components, mcp-image, assets, or type
+- [ ] No hand-built charts / dashboards / fake data-graphics (real chart component or real screenshot only)
 
 ## 6. Sources used (real only)
 - <files / repos / transcripts cited>
