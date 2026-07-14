@@ -18,3 +18,26 @@ Format: `YYYY-MM-DD | brand | surface | WIN/KILL | what + why`
 2026-07-03 | engine | wiring | FIX | Trailing carriage return (\r) in a credentials file silently breaks an MCP env key. `$(cat keyfile)` strips trailing \n but NOT \r, so the stored GEMINI_API_KEY was 54 chars (53-char key + \r) and would fail auth on the first render. Fix: wire with `tr -d '\r\n' < keyfile` AND clean the source file; always sanity-check a pasted key by comparing stored length vs stripped length. Separately: wired free component set expanded to six (shadcn / aceternity / flowbite / magic(21st) / magicui / heroui) + mcp-image (Nano Banana) for image gen, all user scope. De-hardcoded the library name-lists in RULES/design-pod/SKILL/component-scout so they enumerate enabled MCPs live (per no-hardcoded-rotting-values); the scout was already dynamic, the lists were stale illustration. Honest nuance: flowbite's MCP is figma-to-code + theme-gen, not component search, so it is not a browsable component source like the other five.
 2026-06-24 | engine | audit | FIX | Post-rebuild fresh-eyes audit (Fable): closed 3 real defects: (1) "no console errors" was promised but unchecked; render.mjs now captures pageerror + console.error per breakpoint and floor_check blocks on them (older extracts without the key report "not-captured"); (2) brief-ok now honors an overridden brief gate (contract parity: pass OR loud logged override), previously override was meaningless; (3) em-dash rule corrected per Gary: RARE is fine, pileup is the AI tell; RULES reworded + warn-only style note at 3+ em dashes (never blocks). Plus: hook message names the three exits (brief-lock / override / cancel), SCHEMA documents optional kit fields (status, motifs, border/faint/accent2, type.mono), PLAN.md replaced with the rebuild plan, render.mjs falls back networkidle -> domcontentloaded on live-site timeout, pod ensures design-run.json is gitignored in TARGET repos.
 2026-06-24 | engine | marketing-assets | FAIL then REBUILD | First live test (Tegy rebuild) failed entirely. Five root causes, each now structurally fixed: (1) the tool was a repo of scripts, never an installed skill, so I went rogue and hand-cranked HTML mockups (v1-v4); FIX: install as a real /design-studio skill, one path only. (2) no brief/value/story front-end, so endless correction; FIX: mandatory `brief` gate (run_state brief-ok) + engine/brief/brief-template.md, human approves once before any build. (3) hand-coded HTML cannot use the React component libraries, so never beautiful; FIX: RULES.md requires building with real components (Aceternity/21st/shadcn/Flowbite), never hand-coded. (4) fabricated product output presented as real; FIX: RULES.md forbids fabrication, real sources only. (5) constant babysitting; FIX: front-load to one brief approval + one pick. All hard rules in RULES.md, loaded by design-pod + skill. Tegy was the test case, not the subject; the tool is brand- and asset-agnostic.
+
+## 2026-07-07 — Stop-hook deadlock at the human-pick gate
+The design-gate Stop hook blocked EVERY turn-end while `human_pick` was the only
+halted gate. But RULES 12 + design-pod forbid the model from passing or
+overriding that gate — so a run legitimately parked at "candidates presented,
+awaiting the human's pick" deadlocked the loop (hook demands progress the rules
+forbid). Fix: design-gate.sh now allows the stop when brief has passed and the
+ONLY unresolved gate is human_pick, with a stderr note. ship-check is untouched,
+so Stage 4 still cannot ship without the pick. Lesson: state machines with
+human-only gates need an explicit awaiting-human resting state, or their
+enforcement hooks turn into infinite nags.
+
+## 2026-07-07 — Decoration is not design (RM homepage redo)
+First pass layered registry animations (border beams, dot patterns, hover
+dimming, scroll timeline) onto unchanged layouts. Human verdict: gimmicky slop
+that distracts a professional audience. Root cause: skipped Stage-0 grounding in
+exemplars/INDEX.md and the DNA rubric ("zero decorative noise"), then let the
+component-scout drive the design. The corpus already encoded the answer:
+Tesla (type+space only), Exat (motion reveals one idea then pauses; my infinite
+loops violated it), Tresmares (capital-firm premium-minimal = composition).
+Redo that passed: stepped display hero, numbered index / ledger rows, unboxed
+blockquotes, once-only reveals, fast hovers. Rule for the engine: exemplars and
+rubric BEFORE the scout; the scout serves the composition, never replaces it.
