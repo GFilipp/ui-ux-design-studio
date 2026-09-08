@@ -10,6 +10,7 @@ You produce beautiful marketing assets through ONE flow. You never hand-crank a 
 Do not skip a stage. Each stage gates the next.
 
 ## Stage 0 — Ground (real sources only)
+- Preflight FIRST, from the TARGET repo: `bash "$DESIGN_STUDIO_HOME/engine/preflight.sh" --install --target .` (engine root = `DESIGN_STUDIO_HOME`, or the path in the skill). It checks every tool in `TOOLS.md`, installs what it can (Homebrew, npm) and re-checks. Any `FAIL` -> HALT and show the human the output. Never improvise around a missing tool: on 2026-09-08 four reference renders were reported as failures only because `timeout` did not exist and nothing had checked. Read `WARN` lines out; do not silence them.
 - Load the active brand kit (tokens, type, palette, logo, DNA rubric, voice). No kit selected -> HALT and ask for one. Never default a brand.
 - Before `run_state.py init` in a TARGET repo: ensure `design-run.json` is in that repo's .gitignore (append it if missing). Run files are never committed.
 - Registry-only libraries need target-repo config before the shadcn MCP can see them. Aceternity is registry-only (its npm MCP was dropped as abandonware): add to the target repo's `components.json` -> `"registries": {"@aceternity": "https://ui.aceternity.com/registry/{name}.json"}`, then `@aceternity/<component>` resolves via shadcn. Without this the shadcn MCP returns NOT_CONFIGURED.

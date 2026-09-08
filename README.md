@@ -22,6 +22,8 @@ engine/floor/extract.js      # run in the page: dump text/color/bg/size/rect/lin
 engine/floor/floor_check.py  # BLOCKING: contrast, orphans, layout, assets, console, targets (Fitts), type_size, measure; WARN: style, density, choices, drawing
 engine/loop/run_state.py     # fail-loud state machine: pass | overridden(reason) | halted
 engine/loop/README.md        # the render → screenshot → check → fix loop
+engine/preflight.sh          # tool preflight: checks (and with --install, installs) everything in TOOLS.md
+TOOLS.md                     # every machine-level tool the engine needs: why, how installed, how checked
 engine/schema/               # design-run.json schema
 brand-kits/SCHEMA.md         # the brand-kit profile format (the only brand-specific input)
 brand-kits/example-*/        # one example profile documenting the format
@@ -29,7 +31,7 @@ exemplars/INDEX.md           # curated references + distilled DNA (the floor rub
 agents/design-pod.md         # the build orchestrator sub-agent
 skills/design-studio/        # the /design-studio on-ramp command
 hooks/                       # the Stop-hook gate + wiring
-engine/test/                 # run-selftests.sh — the regression suite (85 cases)
+engine/test/                 # run-selftests.sh — the regression suite (133 cases)
 engine/floor/UX-LAWS.md      # UX laws: enforced vs judged vs rejected, with reasons
 engine/floor/capture-refs.mjs    # headless capture of the exemplar corpus
 engine/floor/capture-sections.mjs # section-level capture util
@@ -38,7 +40,9 @@ learnings.md                 # compounding memory of wins/kills
 
 ## Quickstart
 ```bash
-# 0. self-tests (everything below is covered by these)
+# 0. tools (installs what is missing: Playwright + Chromium, GNU timeout, the target repo's package manager),
+#    then the self-tests (everything below is covered by these)
+bash engine/preflight.sh --install
 bash engine/test/run-selftests.sh
 
 # 1. start a run against a brand kit (halts if none)
@@ -75,7 +79,7 @@ python3 engine/loop/run_state.py done --file design-run.json
 
 ## Status
 Phase 1 (lean core): deterministic floor + fail-loud state machine + design-pod + /design-studio
-command + Stop-hook gate. Self-tests: `bash engine/test/run-selftests.sh` (114 cases; fixtures in `samples/`). Every 2026-09-08 audit finding has a named regression case, and the repaired cases are MUTATION-CHECKED: reverting a fix must turn its test red. Since shipped: image-gen (`mcp-image`), 21st.dev
+command + Stop-hook gate. Self-tests: `bash engine/test/run-selftests.sh` (133 cases; fixtures in `samples/`). Every 2026-09-08 audit finding has a named regression case, and the repaired cases are MUTATION-CHECKED: reverting a fix must turn its test red. Since shipped: image-gen (`mcp-image`), 21st.dev
 components, the provenance-based anti-drawing scanner (`engine/floor/drawing_check.py`), and a
 counted references gate. Deferred: divergent-direction automation, multi-surface expansion, Vercel
 audit skills. Rejected: Lazyweb on price (the screen library is $39/mo; Mobbin covers the category for less),

@@ -13,7 +13,7 @@ Engine root: `/Users/garyfilipp/Documents/Claude/ui-ux-design-studio`
 ## How to run
 Hand off to the **design-pod** subagent (`agents/design-pod.md` at the engine root) and run its five stages in order:
 
-0. **Ground** — load the brand kit + real sources. No kit or no real sources -> halt and ask. No fabrication.
+0. **Ground** — preflight (`engine/preflight.sh --install --target <repo>`; a `FAIL` halts, see `TOOLS.md`), then load the brand kit + real sources. No kit or no real sources -> halt and ask. No fabrication.
 1. **Brief lock** — produce the one-page brief (`engine/brief/brief-template.md`): value in CUSTOMER-OUTCOME terms (profit, growth, time, money), the story spine, the visual direction, the DON'TS. Human approves ONCE. No build until `run_state.py brief-ok` exits 0.
 2. **Build with real components** — the component-scout pulls real components from whatever component-library MCPs are enabled this session (enumerated live, never a fixed list); build in the asset's real repo with real motion. Every visual comes from a real source in priority order: components > brand asset > `mcp-image` generated imagery > clean type > real icons. Never hand-drawn (`<svg>`/`<canvas>`/CSS-art/fake charts); `drawing_check.py` + the Stop hook block it, canvas non-overridably.
 3. **Floor + brief-conformance + pick** — mobile-first floor (`engine/floor/render.mjs` then `engine/floor/floor_check.py`, 390 then 1440); confirm the brief is met and no DON'TS broken; present candidates; the human picks one.

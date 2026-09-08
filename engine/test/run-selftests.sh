@@ -401,6 +401,46 @@ chk "controls are captured (was zero)"           "$(python3 -c "import json;prin
 chk "groups are captured (was zero)"             "$(python3 -c "import json;print(1 if len(json.load(open('$TMP/ref-good/extract-mobile.json'))['groups'])>0 else 0)")" 1
 chk "legacy fixtures without controls still 0"   "$(python3 "$FC" samples/_selftest_good.json >/dev/null 2>&1; echo $?)" 0
 
+echo "=== 10. preflight (tool registry, PATH-farm negatives, TOOLS.md parity) ==="
+PF="engine/preflight.sh"
+# A PATH holding every executable on the current PATH EXCEPT the named ones: the black-box way to
+# make a tool "missing" without touching the machine. The exclusion string is built BEFORE IFS
+# changes: bash joins "$*" with IFS[0], and the first draft joined it with ':' and hid nothing.
+farm() { # farm <dir> <exclude...>
+  local d="$1"; shift; local ex=" $* "; mkdir -p "$d"; local IFS=: p f n
+  for p in $PATH; do for f in "$p"/*; do [ -x "$f" ] || continue; n="${f##*/}"; [ -e "$d/$n" ] && continue
+    case "$ex" in *" $n "*) continue;; esac; ln -s "$f" "$d/$n"; done; done; }
+farm "$TMP/farm-nogit" git
+farm "$TMP/farm-nobun" bun pnpm
+chk "farm: git is hidden"                              "$([ -e "$TMP/farm-nogit/git" ] && echo present || echo hidden)" hidden
+chk "farm: bun is hidden"                              "$([ -e "$TMP/farm-nobun/bun" ] && echo present || echo hidden)" hidden
+chk "farm: node is kept"                               "$([ -x "$TMP/farm-nogit/node" ] && echo kept || echo lost)" kept
+chk "preflight: this machine passes (exit 0)"          "$(bash $PF >/dev/null 2>&1; echo $?)" 0
+chk "preflight: --list exits 0 and shows both tiers"   "$(bash $PF --list 2>/dev/null | grep -cE ' (required|recommended) ' | sed 's/^[1-9][0-9]*$/some/')" some
+chk "preflight: unknown flag is a usage error (2)"     "$(bash $PF --bogus >/dev/null 2>&1; echo $?)" 2
+PATH="$TMP/farm-nogit" bash $PF > "$TMP/pf-nogit.out" 2>&1; PFG=$?
+chk "preflight: a missing REQUIRED tool exits 1"       "$PFG" 1
+chk "preflight: ...and names it"                       "$(grep -c '^  FAIL  git ' "$TMP/pf-nogit.out")" 1
+chk "preflight: ...the others still report ok"         "$(grep -c '^  ok    node ' "$TMP/pf-nogit.out")" 1
+mkdir -p "$TMP/tgt-bun" "$TMP/tgt-both" "$TMP/tgt-pnpm" "$TMP/tgt-none" "$TMP/tgt-decl"
+: > "$TMP/tgt-bun/bun.lock"; : > "$TMP/tgt-both/bun.lock"; : > "$TMP/tgt-both/package-lock.json"; : > "$TMP/tgt-pnpm/pnpm-lock.yaml"
+: > "$TMP/tgt-decl/package-lock.json"; echo '{"packageManager":"bun@1.4.2"}' > "$TMP/tgt-decl/package.json"
+PATH="$TMP/farm-nobun" bash $PF --target "$TMP/tgt-bun" > "$TMP/pf-bun.out" 2>&1; PFB=$?
+chk "target: bun.lock alone requires bun (exit 1)"     "$PFB" 1
+chk "target: ...names bun"                             "$(grep -c '^  FAIL  bun ' "$TMP/pf-bun.out")" 1
+PATH="$TMP/farm-nobun" bash $PF --target "$TMP/tgt-both" > "$TMP/pf-both.out" 2>&1; PFBB=$?
+chk "target: bun.lock + package-lock: npm suffices (0)" "$PFBB" 0
+chk "target: ...missing bun is a WARN, not a FAIL"     "$(grep -c '^  WARN  bun ' "$TMP/pf-both.out")" 1
+chk "target: pnpm-lock alone requires pnpm"            "$(PATH="$TMP/farm-nobun" bash $PF --target "$TMP/tgt-pnpm" 2>&1 | grep -c '^  FAIL  pnpm ')" 1
+chk "target: packageManager field beats the lockfile"  "$(PATH="$TMP/farm-nobun" bash $PF --target "$TMP/tgt-decl" 2>&1 | grep -c '^  FAIL  bun ')" 1
+chk "target: no lockfile requires nothing (0)"         "$(bash $PF --target "$TMP/tgt-none" >/dev/null 2>&1; echo $?)" 0
+chk "target: not a directory is a usage error (2)"     "$(bash $PF --target "$TMP/nope" >/dev/null 2>&1; echo $?)" 2
+# TOOLS.md must list exactly the script's registry, so the doc and the code cannot drift apart.
+REG_NAMES=$(sed -n "/^REGISTRY='/,/'\$/p" $PF | sed "s/^REGISTRY='//; s/'\$//" | cut -d'|' -f1 | sort)
+DOC_NAMES=$(grep -E '^\| `[a-z0-9-]+` +\|' TOOLS.md | sed -E 's/^\| `([a-z0-9-]+)`.*/\1/' | sort)
+chk "registry is non-empty"                            "$([ -n "$REG_NAMES" ] && echo yes || echo no)" yes
+chk "TOOLS.md lists exactly the preflight registry"    "$(diff <(echo "$REG_NAMES") <(echo "$DOC_NAMES") | wc -l | tr -d ' ')" 0
+
 echo
 echo "================ $pass passed, $fail failed ================"
 [ "$fail" -eq 0 ] || exit 1
