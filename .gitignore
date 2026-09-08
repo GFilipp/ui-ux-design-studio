@@ -23,3 +23,7 @@ node_modules/
 *.pem
 .claude.json
 .claude/settings.local.json
+
+# python bytecode (build noise, never versioned)
+__pycache__/
+*.pyc

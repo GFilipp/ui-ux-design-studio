@@ -20,7 +20,7 @@ One installed skill (`/design-studio`) that, for any marketing asset, runs five 
 
 - Stage 0, Ground. Load real sources only: brand kit, positioning, ICP, messaging, existing assets, real transcripts. Never invent metrics, testimonials, or product output. Ensure `design-run.json` is gitignored in the target repo before init.
 - Stage 1, Brief lock (human approves once). One page: the asset and audience; the value prop in CUSTOMER-OUTCOME terms (profit, growth, time, money), never features or tech; the story spine; the visual direction (references plus brand DNA plus the bar); the hard DON'TS. No build until `run_state.py brief-ok` exits 0 (pass, or a loud logged override).
-- Stage 2, Build with real components. The component-scout pulls the best real components across enabled libraries (Aceternity, 21st, shadcn, Flowbite) and composes in the asset's real build with real motion. Never hand-coded HTML mockups.
+- Stage 2, Build with real components. The component-scout pulls the best real components across whatever component-library MCPs are enabled this session (enumerated live, never a hardcoded list) and composes in the asset's real build with real motion. Never hand-coded HTML mockups, never hand-drawn svg/canvas.
 - Stage 3, Floor plus brief-conformance plus pick. Objective floor mobile-first (contrast, orphans, overflow, console errors) PLUS a check that the output hits the brief and breaks no DON'TS. Present genuinely good candidates; human makes one taste pick.
 - Stage 4, Ship. `ship-check`, integrate, deploy by git push to the connected host, `done` to finalize (removes the run file). `cancel` aborts at any point.
 

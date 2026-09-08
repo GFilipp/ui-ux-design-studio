@@ -47,6 +47,15 @@ EXCLUDE_SEGMENTS = {"node_modules", ".next", ".nuxt", "dist", "build", "out",
 # copy-paste path (shadcn/aceternity/magicui/motion-primitives), not hand-drawing.
 # Every entry is >=2 segments on purpose: a single generic segment like ("components",)
 # would exempt authored page compositions under components/ (a real bypass).
+#
+# Only libraries that vendor into their OWN directory need an entry here:
+#   - shadcn-registry installs (kibo-ui, and aceternity via its @aceternity namespace) land in
+#     `aliases.ui`, covered by ("components","ui") + extra_vendored_from_components_json.
+#   - npm-imported libraries (heroui via @heroui/react) live in node_modules, already excluded.
+#   - flowbite is deliberately NOT here: its figma-to-code output is emitted INTO authored files,
+#     so exempting it would be a bypass. Its emitted icons sit under the icon ceiling; a genuine
+#     illustration-scale paste is a soft block you override with a reason.
+# eldoraui / cult are speculative but harmless: they exempt only paths that must already exist.
 VENDORED_SUBPATHS = [
     ("components", "ui"), ("components", "magicui"), ("components", "aceternity"),
     ("components", "motion-primitives"), ("components", "eldoraui"), ("components", "cult"),

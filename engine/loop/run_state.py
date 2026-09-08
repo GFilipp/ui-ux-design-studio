@@ -13,6 +13,8 @@ Usage:
   run_state.py done   --file design-run.json          # finalize: all gates pass -> remove the file
   run_state.py cancel --file design-run.json          # ABORT: remove the file so the Stop hook stops gating
   run_state.py brief-ok --file design-run.json        # exit 0 if the brief gate is locked (pass), else 3 (build blocked)
+  run_state.py references --file design-run.json --add PATH_OR_URL ...   # record loaded vision references (gate COUNTS these)
+  run_state.py vendored   --file design-run.json --add PATH ...          # record library-install paths (drawing_check exempts them)
 """
 import argparse
 import json
@@ -21,6 +23,11 @@ import subprocess
 import sys
 
 GATES = ["brand_kit", "brief", "references", "assets", "no_drawing", "contrast", "orphans", "layout", "responsive", "human_pick"]
+
+# The references gate is COUNTED, not asserted: `gate --name references --status pass` is
+# refused until this many real references are recorded via `references --add`, and ship-check
+# and done re-verify the count. Before this, the gate passed on the model's word alone.
+REFERENCES_MIN = 3
 
 
 def git_head(cwd):
@@ -46,6 +53,62 @@ def drawing_hard(run_file):
         return p.returncode == 3
     except (FileNotFoundError, OSError):
         return False
+
+
+def reference_is_real(ref, base_dir):
+    # A reference counts only if it still resolves to something: an http(s) URL, or a local
+    # path that EXISTS. Existence is re-checked on every count, not just at write time —
+    # otherwise hand-editing design-run.json with three invented paths would satisfy the gate,
+    # which is the exact assertion-passing this gate exists to stop.
+    if not isinstance(ref, str) or not ref.strip():
+        return False
+    r = ref.strip()
+    if r.startswith("http://") or r.startswith("https://"):
+        return True
+    p = r if os.path.isabs(r) else os.path.join(base_dir, r)
+    return os.path.exists(p)
+
+
+def references_count(state, base_dir):
+    refs = state.get("references")
+    if not isinstance(refs, list):
+        return 0
+    seen, n = set(), 0
+    for r in refs:
+        if isinstance(r, str) and r.strip() not in seen and reference_is_real(r, base_dir):
+            seen.add(r.strip())
+            n += 1
+    return n
+
+
+def references_shortfall(state, base_dir):
+    # Reconcile the gate against the array. A `pass` that is not backed by REFERENCES_MIN
+    # real references is stale or asserted; an `overridden` gate is a logged human choice
+    # and is honored (only the canvas hard-block is non-overridable).
+    g = (state.get("gates") or {}).get("references") or {}
+    if g.get("status") != "pass":
+        return None
+    n = references_count(state, base_dir)
+    return n if n < REFERENCES_MIN else None
+
+
+def run_dir(path):
+    return os.path.dirname(os.path.abspath(path)) or "."
+
+
+def unresolved_gates(state):
+    # Fail-CLOSED: a gate is resolved ONLY by exactly "pass" or "overridden". Testing for
+    # == "halted" instead let an unknown status ("approved", "ok", anything) satisfy both the
+    # halted check and the shortfall reconcile, which shipped the run. Iterating GATES (not the
+    # file's keys) also makes a MISSING gate unresolved instead of a KeyError crash.
+    gates = state.get("gates") or {}
+    out = []
+    for g in GATES:
+        v = gates.get(g)
+        status = v.get("status") if isinstance(v, dict) else None
+        if status not in ("pass", "overridden"):
+            out.append(g)
+    return out
 
 
 def load(path):
@@ -87,6 +150,15 @@ def cmd_gate(a):
         sys.stderr.write("unknown gate: %s\n" % a.name)
         sys.exit(1)
     status = "pass" if a.status == "pass" else "halted"
+    # references cannot be passed by assertion: the array must actually hold REFERENCES_MIN.
+    if a.name == "references" and status == "pass":
+        n = references_count(state, run_dir(a.file))
+        if n < REFERENCES_MIN:
+            sys.stderr.write(
+                "HALT: references gate needs %d recorded references, found %d. "
+                "Load them and record each with `run_state.py references --file %s --add <path-or-url>`, "
+                "or log an explicit override with a reason.\n" % (REFERENCES_MIN, n, a.file))
+            sys.exit(3)
     state["gates"][a.name] = {"status": status, "detail": a.detail, "override_reason": None}
     save(a.file, state)
     print("%s -> %s" % (a.name, status))
@@ -110,20 +182,31 @@ def cmd_override(a):
 
 def cmd_ship_check(a):
     state = load(a.file)
-    halted = [g for g, v in state["gates"].items() if v["status"] == "halted"]
-    overrides = {g: v["override_reason"] for g, v in state["gates"].items() if v["status"] == "overridden"}
-    print("=== ship summary: %s (%s) ===" % (state["project"], state["surface"]))
-    print("brand kit: %s" % state["brand_kit"])
+    gates = state.get("gates") or {}
+    unresolved = unresolved_gates(state)
+    overrides = {g: (gates.get(g) or {}).get("override_reason")
+                 for g in GATES if (gates.get(g) or {}).get("status") == "overridden"}
+    print("=== ship summary: %s (%s) ===" % (state.get("project"), state.get("surface")))
+    print("brand kit: %s" % state.get("brand_kit"))
     for g in GATES:
-        v = state["gates"][g]
-        line = "  %-12s %s" % (g, v["status"])
-        if v["status"] == "overridden":
-            line += "  (reason: %s)" % v["override_reason"]
+        v = gates.get(g) if isinstance(gates.get(g), dict) else {}
+        status = v.get("status") or "MISSING"
+        line = "  %-12s %s" % (g, status)
+        if status == "overridden":
+            line += "  (reason: %s)" % v.get("override_reason")
+        elif status not in ("pass", "halted", "MISSING"):
+            line += "  (INVALID status — treated as unresolved)"
         print(line)
     if overrides:
         print("SHIPPED WITH %d OVERRIDE(S): %s" % (len(overrides), ", ".join(overrides)))
-    if halted:
-        print("BLOCKED — halted gates: %s. Pass them or log an override." % ", ".join(halted))
+    if unresolved:
+        print("BLOCKED — unresolved gates: %s. Pass them or log an override." % ", ".join(unresolved))
+        sys.exit(3)
+    short = references_shortfall(state, run_dir(a.file))
+    if short is not None:
+        print("BLOCKED — references gate reads pass but only %d of %d references resolve "
+              "(stale or asserted). Record them with `references --add`, or log an override."
+              % (short, REFERENCES_MIN))
         sys.exit(3)
     print("SHIP OK.")
     sys.exit(0)
@@ -142,14 +225,20 @@ def cmd_cancel(a):
 def cmd_done(a):
     # Finalize a passing run: refuse if any gate is still halted, else remove the file (run complete).
     state = load(a.file)
-    halted = [g for g, v in state["gates"].items() if v["status"] == "halted"]
-    if halted:
-        sys.stderr.write("cannot finalize: halted gate(s): %s. Pass them, log an override, or run `cancel`.\n" % ", ".join(halted))
+    unresolved = unresolved_gates(state)
+    if unresolved:
+        sys.stderr.write("cannot finalize: unresolved gate(s): %s. Pass them, log an override, or run `cancel`.\n" % ", ".join(unresolved))
+        sys.exit(3)
+    short = references_shortfall(state, run_dir(a.file))
+    if short is not None:
+        sys.stderr.write("cannot finalize: references gate reads pass but only %d of %d references resolve. "
+                         "Record them with `references --add`, or log an override.\n" % (short, REFERENCES_MIN))
         sys.exit(3)
     if drawing_hard(a.file):
         sys.stderr.write("cannot finalize: hand-drawn <canvas> detected in the build (non-overridable, even with a no_drawing override). Remove it and source the visual from a component, mcp-image, or clean type.\n")
         sys.exit(3)
-    overrides = [g for g, v in state["gates"].items() if v["status"] == "overridden"]
+    overrides = [g for g, v in (state.get("gates") or {}).items()
+                 if isinstance(v, dict) and v.get("status") == "overridden"]
     os.remove(a.file)
     msg = "run finalized for '%s'; %s removed." % (state.get("project"), a.file)
     if overrides:
@@ -162,11 +251,42 @@ def cmd_vendored(a):
     # Record files/dirs written by component-library installs so drawing_check exempts them
     # (their raw svg/canvas is sanctioned copy-paste, not hand-drawing).
     state = load(a.file)
-    state.setdefault("vendored", [])
+    if not isinstance(state.get("vendored"), list):
+        state["vendored"] = []
     added = [p for p in (a.add or []) if p and p not in state["vendored"]]
     state["vendored"].extend(added)
     save(a.file, state)
     print("vendored paths recorded (+%d, total %d): %s" % (len(added), len(state["vendored"]), ", ".join(added) or "(none)"))
+
+
+def cmd_references(a):
+    # Record the vision references actually loaded for this run. The references gate counts
+    # THIS array, so a local path that does not exist is refused: otherwise the count could be
+    # padded with names and the gate would be back to passing on assertion.
+    state = load(a.file)
+    if not isinstance(state.get("references"), list):
+        state["references"] = []
+    base = run_dir(a.file)
+    bad = [p for p in (a.add or []) if p and p.strip() and not reference_is_real(p, base)]
+    if bad:
+        sys.stderr.write("HALT: reference(s) do not resolve: %s. Record an existing screenshot path "
+                         "(relative to the run file) or an http(s) URL — a bare name does not count.\n"
+                         % ", ".join(bad))
+        sys.exit(3)
+    # Dedupe against the existing array AND within this batch (the same path passed twice
+    # in one call must not count twice).
+    added = []
+    for p in (a.add or []):
+        q = p.strip() if isinstance(p, str) else ""
+        if q and q not in state["references"] and q not in added:
+            added.append(q)
+    state["references"].extend(added)
+    save(a.file, state)
+    n = references_count(state, base)
+    print("references recorded (+%d, total %d of %d needed): %s"
+          % (len(added), n, REFERENCES_MIN, ", ".join(added) or "(none)"))
+    if n < REFERENCES_MIN:
+        print("  %d more needed before the references gate can pass." % (REFERENCES_MIN - n))
 
 
 def cmd_brief_ok(a):
@@ -207,6 +327,9 @@ def main():
 
     p = sub.add_parser("vendored"); p.add_argument("--file", required=True)
     p.add_argument("--add", nargs="*", default=[]); p.set_defaults(fn=cmd_vendored)
+
+    p = sub.add_parser("references"); p.add_argument("--file", required=True)
+    p.add_argument("--add", nargs="*", default=[]); p.set_defaults(fn=cmd_references)
 
     p = sub.add_parser("brief-ok"); p.add_argument("--file", required=True); p.set_defaults(fn=cmd_brief_ok)
 

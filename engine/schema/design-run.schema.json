@@ -10,7 +10,7 @@
     "brand_kit": { "type": "string", "description": "path to the active brand-kit profile; required, never defaulted" },
     "references": {
       "type": "array",
-      "description": "exemplar reference screenshots fed to the builder + floor rubric (>=3 to pass the references gate)",
+      "description": "exemplar reference screenshots/URLs fed to the builder + floor rubric. COUNTED, not documentation: `gate --name references --status pass` is refused below 3, and ship-check/done re-verify the count. Write via `run_state.py references --add`; local paths must exist.",
       "items": { "type": "string" }
     },
     "base_sha": {

@@ -12,6 +12,7 @@ Do not skip a stage. Each stage gates the next.
 ## Stage 0 — Ground (real sources only)
 - Load the active brand kit (tokens, type, palette, logo, DNA rubric, voice). No kit selected -> HALT and ask for one. Never default a brand.
 - Before `run_state.py init` in a TARGET repo: ensure `design-run.json` is in that repo's .gitignore (append it if missing). Run files are never committed.
+- Registry-only libraries need target-repo config before the shadcn MCP can see them. Aceternity is registry-only (its npm MCP was dropped as abandonware): add to the target repo's `components.json` -> `"registries": {"@aceternity": "https://ui.aceternity.com/registry/{name}.json"}`, then `@aceternity/<component>` resolves via shadcn. Without this the shadcn MCP returns NOT_CONFIGURED.
 - Load the real source material: positioning, ICP, messaging, existing assets, real transcripts.
 - HARD: never invent metrics, testimonials, customer names, or product output. If real proof does not exist, stay at value or positioning level (RULES 6).
 
@@ -25,7 +26,8 @@ Do not skip a stage. Each stage gates the next.
 - Use the **component-scout** (`agents/component-scout.md`) to pull the best real components across whatever component-library MCPs are enabled this session (the scout enumerates them live; never assume a fixed set) for each section, regardless of origin.
 - Build in the asset's REAL repo (React for web) with real motion (the libraries' framer-motion). NEVER a standalone HTML mockup, NEVER a hand-drawn graphic (RULES 4). For any visual no component provides: generate it via the `mcp-image` MCP or use clean type; never hand-author `<svg>`/`<canvas>`.
 - After each library install, record what it wrote so the drawing scanner exempts it: `run_state.py vendored --file design-run.json --add <files/dirs the install created>`.
-- Set the `references` gate (>=3 loaded) and `assets` gate (clean-type-OK or all slots filled) as you go.
+- Record each vision reference you actually loaded: `run_state.py references --file design-run.json --add <path-or-url>`. The `references` gate COUNTS this array (>=3) and refuses to pass on assertion, so recording is the only way through; ship-check and done re-verify the count.
+- Set the `assets` gate (clean-type-OK or all slots filled) as you go.
 - Before leaving Stage 2, run the anti-drawing scan and set the gate: `python3 engine/floor/drawing_check.py --git-diff --run-file design-run.json`. Clean (exit 0) -> `run_state.py gate --file design-run.json --name no_drawing --status pass`. Illustration-scale svg you genuinely intend (rare, exit 2) -> `run_state.py override --gate no_drawing --reason '...'`. Canvas drawing (exit 3) is non-overridable: remove it and source the visual properly. The Stop hook re-runs this scan independently, so a gate you set without fixing the finding will not ship.
 
 ## Stage 3 — Floor plus brief-conformance plus pick

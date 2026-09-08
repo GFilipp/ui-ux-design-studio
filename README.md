@@ -49,5 +49,8 @@ python3 engine/loop/run_state.py ship-check --file design-run.json
 
 ## Status
 Phase 1 (lean core): deterministic floor + fail-loud state machine + design-pod + /design-studio
-command + Stop-hook gate. Self-tests in `samples/`. Deferred: image-gen MCP, 21st.dev components,
-divergent-direction automation, multi-surface expansion, Vercel audit skills.
+command + Stop-hook gate. Self-tests in `samples/`. Since shipped: image-gen (`mcp-image`), 21st.dev
+components, the provenance-based anti-drawing scanner (`engine/floor/drawing_check.py`), and a
+counted references gate. Deferred: divergent-direction automation, multi-surface expansion, Vercel
+audit skills. Rejected on price, not capability: Lazyweb reference library ($39/mo; Mobbin covers the
+same category for less) and the Figma MCP (only pays off if work originates in Figma).
