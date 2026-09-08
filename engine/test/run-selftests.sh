@@ -33,7 +33,7 @@ newrun() { # newrun <dir>
   for i in 1 2 3; do printf 'PNGDATA' > "$d/refs/r$i.png"; done
   python3 "$RS" init --file "$d/design-run.json" --project t --surface web --brand-kit "$KIT" >/dev/null 2>&1
   python3 "$RS" references --file "$d/design-run.json" --add refs/r1.png refs/r2.png refs/r3.png >/dev/null 2>&1
-  for g in brief references assets no_drawing contrast orphans layout responsive; do
+  for g in brief references assets no_drawing contrast orphans layout console targets type_size measure responsive; do
     python3 "$RS" gate --file "$d/design-run.json" --name "$g" --status pass >/dev/null 2>&1
   done
   python3 "$RS" pick --file "$d/design-run.json" --candidate A >/dev/null 2>&1
@@ -310,6 +310,26 @@ PY
 else
   chk "orphan render (playwright available?)" "render-failed" "ok"
 fi
+
+
+echo "=== 9. UX-law gates (Fitts / type size / measure / choice load) ==="
+node engine/floor/render.mjs "$ROOT/samples/uxlaws/small-targets.html" "$TMP/tap" >/dev/null 2>&1
+python3 "$FC" "$TMP/tap/extract-mobile.json" --breakpoint mobile --out "$TMP/tap/m.json" >/dev/null 2>&1
+python3 "$FC" "$TMP/tap/extract-desktop.json" --breakpoint desktop --out "$TMP/tap/d.json" >/dev/null 2>&1
+gate() { python3 -c "import json;print(json.load(open('$1'))['gates']['$2']['status'])"; }
+cnt() { python3 -c "import json;print(len(json.load(open('$1'))['gates']['$2']['$3']))"; }
+chk "Fitts: small taps BLOCK on mobile"        "$(gate "$TMP/tap/m.json" targets)" "fail"
+chk "Fitts: flags exactly the 2 small controls" "$(cnt "$TMP/tap/m.json" targets small)" 2
+chk "Fitts: inline prose link NOT flagged"     "$(python3 -c "import json;print(sum(1 for s in json.load(open('$TMP/tap/m.json'))['gates']['targets']['small'] if 'comparison' in (s.get('label') or '')))")" 0
+chk "Fitts: 24px pointer floor on desktop"     "$(python3 -c "import json;print(json.load(open('$TMP/tap/d.json'))['gates']['targets']['minimum'])")" 24
+node engine/floor/render.mjs "$ROOT/samples/uxlaws/wide-measure.html" "$TMP/wm" >/dev/null 2>&1
+python3 "$FC" "$TMP/wm/extract-mobile.json" --breakpoint mobile --out "$TMP/wm/m.json" >/dev/null 2>&1
+chk "type_size: 9px body BLOCKS on mobile"     "$(gate "$TMP/wm/m.json" type_size)" "fail"
+chk "measure: 130+ CPL BLOCKS"                 "$(gate "$TMP/wm/m.json" measure)" "fail"
+chk "the reference sample still clears it all" "$(node engine/floor/render.mjs "$ROOT/samples/good.html" "$TMP/gd" >/dev/null 2>&1; python3 "$FC" "$TMP/gd/extract-mobile.json" --breakpoint mobile >/dev/null 2>&1; echo $?)" 0
+chk "controls are captured at all (was zero)"  "$(python3 -c "import json;print(1 if len(json.load(open('$TMP/gd/extract-mobile.json'))['controls'])>0 else 0)")" 1
+chk "groups are captured at all (was zero)"    "$(python3 -c "import json;print(1 if len(json.load(open('$TMP/gd/extract-mobile.json'))['groups'])>0 else 0)")" 1
+chk "legacy fixtures without controls still 0" "$(python3 "$FC" samples/_selftest_good.json >/dev/null 2>&1; echo $?)" 0
 
 echo
 echo "================ $pass passed, $fail failed ================"

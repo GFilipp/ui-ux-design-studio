@@ -2,6 +2,8 @@
 design-run.json
 *.run.json
 *.extract.json
+extract-*.json
+shot-*.png
 floor.*.json
 samples/*.png
 samples/*.jpeg

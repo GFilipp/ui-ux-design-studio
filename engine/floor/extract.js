@@ -105,6 +105,26 @@
     }
     return count;
   }
+  // Visual line count for the element's own text: the number of distinct line boxes.
+  function lineCount(el) {
+    if (el.children.length && !onlyInlineChildren(el)) return null;
+    var r = document.createRange();
+    r.selectNodeContents(el);
+    var rects = r.getClientRects(), tops = [];
+    for (var i = 0; i < rects.length; i++) {
+      var t = Math.round(rects[i].top);
+      var seen = false;
+      for (var j = 0; j < tops.length; j++) if (Math.abs(tops[j] - t) <= 2) { seen = true; break; }
+      if (!seen) tops.push(t);
+    }
+    return tops.length || null;
+  }
+  // Accessible-ish label, only to make a finding readable.
+  function labelOf(el) {
+    var t = (el.getAttribute("aria-label") || el.textContent || el.getAttribute("title")
+             || el.getAttribute("alt") || el.getAttribute("placeholder") || el.value || "").trim();
+    return t.slice(0, 60);
+  }
   // Strip React SSR comment markers ONCE. Doing it per-element mutated the live DOM during the
   // measurement loop and forced a layout pass per element; render.mjs now also screenshots BEFORE
   // this runs, so the human's pick image is the untouched page.
@@ -116,7 +136,7 @@
   document.body.normalize();
   var report = {
     viewport: { w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio },
-    textNodes: [], images: [], overflow: {}
+    textNodes: [], images: [], overflow: {}, controls: [], groups: []
   };
   var all = document.querySelectorAll("body *");
   for (var i = 0; i < all.length; i++) {
@@ -138,7 +158,12 @@
       ownsDirectText: directText(el).length > 0,
       rect: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
       lastLineWords: lastLineWordCount(el),
-      totalWords: txt.split(/\s+/).length
+      totalWords: txt.split(/\s+/).length,
+      // Line metrics for MEASURE (characters per line). `text` is truncated to 120 for payload
+      // size, so chars/lineCount are computed on the FULL string.
+      chars: txt.length,
+      lineCount: lineCount(el),
+      lineHeight: parseFloat(cs.lineHeight) || null
     });
   }
   var imgs = document.querySelectorAll("img");
@@ -149,6 +174,50 @@
       naturalWidth: im.naturalWidth,
       alt: im.alt || "",
       visible: isVisible(im)
+    });
+  }
+  // --- interactive controls (Fitts: tap-target size) ---
+  // Captured as a FIRST-CLASS list. Previously interactivity was incidental to text, so an
+  // icon-only <button> or any <input> was invisible to every check.
+  var CTRL_SEL = 'a[href],button,input:not([type=hidden]),select,textarea,summary,' +
+                 '[role=button],[role=link],[role=checkbox],[role=tab],[onclick]';
+  var ctrls = document.querySelectorAll(CTRL_SEL);
+  for (var ci2 = 0; ci2 < ctrls.length; ci2++) {
+    var c = ctrls[ci2];
+    if (!isVisible(c)) continue;
+    var cr = c.getBoundingClientRect();
+    var ccs = getComputedStyle(c);
+    // An inline link inside a paragraph is text, not a tap target with its own hit area;
+    // judging it by 44px would flag every prose link on the page.
+    var inlineInProse = ccs.display === "inline" && c.tagName === "A";
+    report.controls.push({
+      tag: c.tagName.toLowerCase(),
+      type: (c.getAttribute("type") || c.getAttribute("role") || "").toLowerCase(),
+      label: labelOf(c),
+      display: ccs.display,
+      inlineInProse: inlineInProse,
+      rect: { x: Math.round(cr.x), y: Math.round(cr.y), w: Math.round(cr.width), h: Math.round(cr.height) }
+    });
+  }
+  // --- sibling-group sizes (Hick/Miller: choice-set size) ---
+  // Flex/grid containers are where a design presents a set of choices.
+  for (var gi = 0; gi < all.length; gi++) {
+    var g = all[gi];
+    if (!isVisible(g)) continue;
+    var gcs = getComputedStyle(g);
+    var isTrack = gcs.display === "flex" || gcs.display === "grid" ||
+                  gcs.display === "inline-flex" || gcs.display === "inline-grid";
+    var isList = g.tagName === "UL" || g.tagName === "OL" || g.tagName === "NAV";
+    if (!isTrack && !isList) continue;
+    var kids = 0;
+    for (var ki = 0; ki < g.children.length; ki++) if (isVisible(g.children[ki])) kids++;
+    if (kids < 2) continue;
+    var navLinks = null;
+    if (g.tagName === "NAV" || g.closest("nav") === g) {
+      navLinks = g.querySelectorAll('a[href],[role=link]').length;
+    }
+    report.groups.push({
+      tag: g.tagName.toLowerCase(), display: gcs.display, children: kids, navLinks: navLinks
     });
   }
   var de = document.documentElement;

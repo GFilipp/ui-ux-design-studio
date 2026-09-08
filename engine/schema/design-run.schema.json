@@ -22,6 +22,10 @@
       "description": "files/dirs written by component-library installs; drawing_check exempts these (sanctioned copy-paste svg/canvas, not hand-drawing)",
       "items": { "type": "string" }
     },
+    "picked_candidate": {
+      "type": "string",
+      "description": "which candidate the human chose; written only by `run_state.py pick`, the sole way to resolve human_pick"
+    },
     "gates": {
       "type": "object",
       "description": "one entry per gate",

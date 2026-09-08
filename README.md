@@ -29,27 +29,53 @@ exemplars/INDEX.md           # curated references + distilled DNA (the floor rub
 agents/design-pod.md         # the build orchestrator sub-agent
 skills/design-studio/        # the /design-studio on-ramp command
 hooks/                       # the Stop-hook gate + wiring
+engine/test/                 # run-selftests.sh — the regression suite (85 cases)
+engine/floor/UX-LAWS.md      # UX laws: enforced vs judged vs rejected, with reasons
+engine/floor/capture-refs.mjs    # headless capture of the exemplar corpus
+engine/floor/capture-sections.mjs # section-level capture util
 learnings.md                 # compounding memory of wins/kills
 ```
 
 ## Quickstart
 ```bash
+# 0. self-tests (everything below is covered by these)
+bash engine/test/run-selftests.sh
+
 # 1. start a run against a brand kit (halts if none)
 python3 engine/loop/run_state.py init --file design-run.json \
   --project my-landing --surface web \
   --brand-kit brand-kits/example-rocketminds/brand-kit.json
 
-# 2. build + render a candidate, then extract + check (desktop and mobile)
-#    (run engine/floor/extract.js in the page, save JSON, then:)
-python3 engine/floor/floor_check.py page.desktop.extract.json --breakpoint desktop --out floor.desktop.json
+# 2. record the vision references — the gate COUNTS these and refuses to pass below 3
+python3 engine/loop/run_state.py references --file design-run.json \
+  --add refs/linear.png refs/zed.png https://ui.aceternity.com
 
-# 3. record gates, present candidates for the human pick, then gate the finish
+# 3. lock the human-approved brief, then confirm the build is unblocked
+python3 engine/loop/run_state.py gate --file design-run.json --name brief --status pass
+python3 engine/loop/run_state.py brief-ok --file design-run.json
+
+# 4. build, then render + check MOBILE FIRST (render.mjs writes extract-<bp>.json + shot-<bp>.png)
+node engine/floor/render.mjs http://localhost:3000 /tmp/floor
+python3 engine/floor/floor_check.py /tmp/floor/extract-mobile.json  --breakpoint mobile  --require-assets --out /tmp/floor/mobile.json
+python3 engine/floor/floor_check.py /tmp/floor/extract-desktop.json --breakpoint desktop --require-assets --out /tmp/floor/desktop.json
+
+# 5. anti-hand-drawing scan, then record the gates it and the floor cover
+python3 engine/floor/drawing_check.py --git-diff --run-file design-run.json
+for g in references assets no_drawing contrast orphans layout responsive; do
+  python3 engine/loop/run_state.py gate --file design-run.json --name $g --status pass
+done
+
+# 6. the human picks; `pick` is the ONLY way to resolve human_pick, and it records the choice
+python3 engine/loop/run_state.py pick --file design-run.json --candidate B
+
+# 7. ship-check re-runs the drawing scan itself, so a canvas blocks BEFORE you deploy
 python3 engine/loop/run_state.py ship-check --file design-run.json
+python3 engine/loop/run_state.py done --file design-run.json
 ```
 
 ## Status
 Phase 1 (lean core): deterministic floor + fail-loud state machine + design-pod + /design-studio
-command + Stop-hook gate. Self-tests: `bash engine/test/run-selftests.sh` (75 cases; fixtures in `samples/`). Every 2026-09-08 audit finding has a named regression case, and the repaired cases are MUTATION-CHECKED: reverting a fix must turn its test red. Since shipped: image-gen (`mcp-image`), 21st.dev
+command + Stop-hook gate. Self-tests: `bash engine/test/run-selftests.sh` (85 cases; fixtures in `samples/`). Every 2026-09-08 audit finding has a named regression case, and the repaired cases are MUTATION-CHECKED: reverting a fix must turn its test red. Since shipped: image-gen (`mcp-image`), 21st.dev
 components, the provenance-based anti-drawing scanner (`engine/floor/drawing_check.py`), and a
 counted references gate. Deferred: divergent-direction automation, multi-surface expansion, Vercel
 audit skills. Rejected: Lazyweb on price (the screen library is $39/mo; Mobbin covers the category for less),

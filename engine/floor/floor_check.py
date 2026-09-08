@@ -132,8 +132,113 @@ def check_graphics(data):
     return {"status": "warn", "large_svgs": len(big), "canvases": len(canvases), "note": note}
 
 
-def evaluate(data, require_assets=False, allow_indeterminate=False):
+
+# --- UX-law derived checks (2026-09-08) -------------------------------------------------
+# Only the laws that are OBJECTIVELY measurable are gates. The judgment-level laws (attention
+# order, one dominant element, Gestalt grouping) live in the brief + DNA rubric because they
+# need a human; encoding them as thresholds would fake precision we do not have.
+#
+# Fitts's law: a tap target smaller than the platform minimum is slower and error-prone. Apple
+# HIG says 44pt, Material 48dp, WCAG 2.5.5 (AAA) 44px. 44 on TOUCH breakpoints; desktop pointers
+# are precise, so there it only warns.
+TAP_MIN = 44
+TAP_MIN_DESKTOP = 24          # WCAG 2.5.8 (AA) floor, warn-only on pointer breakpoints
+TYPE_MIN_BLOCK = 12           # below this, body copy is indefensible on a phone
+TYPE_MIN_WARN = 15            # 15 and under reads small on mobile; judgment, so warn
+MEASURE_MAX_WARN = 100        # characters per line; comfortable body measure is ~45-75
+MEASURE_MAX_BLOCK = 130       # beyond this, line tracking genuinely breaks down
+BLOCK_WORDS_WARN = 120        # one text block this long is a wall of text (RULES 5)
+CHOICES_WARN = 10             # Miller: a single choice set beyond ~7+-2 stops being scannable
+NAV_LINKS_WARN = 7            # Hick: primary nav beyond 7 slows every decision
+
+
+def is_touch(breakpoint, viewport):
+    if breakpoint:
+        return breakpoint.lower() in ("mobile", "phone", "touch", "tablet")
+    return (viewport or {}).get("w", 9999) < 768
+
+
+def check_targets(controls, touch):
+    # Fitts. Inline prose links are excluded: they are text, not standalone hit areas, and
+    # judging them at 44px would flag every link in a paragraph.
+    minimum = TAP_MIN if touch else TAP_MIN_DESKTOP
+    small = []
+    for c in controls or []:
+        if c.get("inlineInProse"):
+            continue
+        r = c.get("rect") or {}
+        w, h = r.get("w", 0), r.get("h", 0)
+        if w <= 0 or h <= 0:
+            continue
+        if min(w, h) < minimum:
+            small.append({"tag": c.get("tag"), "label": c.get("label"),
+                          "w": w, "h": h, "need": minimum})
+    return small, minimum
+
+
+def check_type_size(nodes, touch):
+    # Readability floor. Only real copy, and only on touch breakpoints.
+    if not touch:
+        return [], []
+    blocking, warn = [], []
+    for n in nodes:
+        if not n.get("ownsDirectText", True) or n.get("totalWords", 0) < 3:
+            continue
+        fs = n.get("fontSize") or 0
+        if fs and fs < TYPE_MIN_BLOCK:
+            blocking.append({"text": n.get("text"), "fontSize": fs, "need": TYPE_MIN_BLOCK})
+        elif fs and fs <= TYPE_MIN_WARN:
+            warn.append({"text": n.get("text"), "fontSize": fs})
+    return blocking, warn
+
+
+def check_measure(nodes):
+    # Characters per line. Long measure is the readability half of "no walls of text" (RULES 5).
+    blocking, warn = [], []
+    for n in nodes:
+        if not n.get("ownsDirectText", True):
+            continue
+        lines, chars = n.get("lineCount"), n.get("chars")
+        if not lines or not chars or chars < MEASURE_MAX_WARN:
+            continue  # short text cannot have a bad measure; a LONG single line certainly can
+        if is_large(n.get("fontSize", 0), n.get("fontWeight", 400)):
+            continue  # display type is set to a different measure on purpose
+        cpl = chars / float(lines)
+        if cpl >= MEASURE_MAX_BLOCK:
+            blocking.append({"text": n.get("text"), "cpl": round(cpl), "need": MEASURE_MAX_WARN})
+        elif cpl >= MEASURE_MAX_WARN:
+            warn.append({"text": n.get("text"), "cpl": round(cpl)})
+    return blocking, warn
+
+
+def check_density(nodes):
+    # The other half of RULES 5: one enormous block of prose. WARN — "visual-first" is a
+    # judgment the human owns; only the extreme is worth flagging mechanically.
+    return [{"text": n.get("text"), "words": n.get("totalWords")}
+            for n in nodes
+            if n.get("ownsDirectText", True) and n.get("totalWords", 0) >= BLOCK_WORDS_WARN]
+
+
+def check_choices(groups):
+    # Hick + Miller. WARN only: a 12-logo wall or a long feature grid can be right, so this
+    # surfaces the choice-set size for the human rather than pretending to know the answer.
+    out = []
+    for g in groups or []:
+        if (g.get("children") or 0) >= CHOICES_WARN:
+            out.append({"tag": g.get("tag"), "children": g["children"], "kind": "group"})
+        if (g.get("navLinks") or 0) > NAV_LINKS_WARN:
+            out.append({"tag": g.get("tag"), "navLinks": g["navLinks"], "kind": "nav"})
+    return out
+
+
+def evaluate(data, require_assets=False, allow_indeterminate=False, breakpoint=None):
     nodes = data.get("textNodes", [])
+    touch = is_touch(breakpoint, data.get("viewport"))
+    small_targets, tap_min = check_targets(data.get("controls"), touch)
+    type_block, type_warn = check_type_size(nodes, touch)
+    measure_block, measure_warn = check_measure(nodes)
+    density = check_density(nodes)
+    choices = check_choices(data.get("groups"))
     cfails, cindet = check_contrast(nodes)
     orphans = check_orphans(nodes)
     layout = check_layout(data.get("overflow", {}))
@@ -151,7 +256,8 @@ def evaluate(data, require_assets=False, allow_indeterminate=False):
         contrast_status = "pass"
     console_fail = console_errors is not None and console_errors > 0
     blocking = bool(contrast_status in ("fail", "review") or orphans or layout
-                    or (require_assets and broken) or console_fail)
+                    or (require_assets and broken) or console_fail
+                    or small_targets or type_block or measure_block)
     return {
         "passed": not blocking,
         "gates": {
@@ -169,6 +275,19 @@ def evaluate(data, require_assets=False, allow_indeterminate=False):
                       "em_dashes": em_dashes,
                       "note": ("em-dash pileup (%d); rare is fine, this reads as the AI default connector" % em_dashes)
                               if em_dashes >= 3 else None},
+            # Fitts's law — BLOCKING on touch breakpoints.
+            "targets": {"status": "fail" if small_targets else "pass",
+                        "minimum": tap_min, "touch": touch, "small": small_targets},
+            # readability floor — BLOCKING under 12px, warn to 15px (touch only)
+            "type_size": {"status": "fail" if type_block else ("warn" if type_warn else "pass"),
+                          "too_small": type_block, "small": type_warn},
+            # measure / characters per line — the readability half of RULES 5
+            "measure": {"status": "fail" if measure_block else ("warn" if measure_warn else "pass"),
+                        "too_wide": measure_block, "wide": measure_warn},
+            # warn-only: wall-of-text density (RULES 5); "visual-first" stays a human call
+            "density": {"status": "warn" if density else "pass", "long_blocks": density},
+            # warn-only: Hick/Miller choice-set size
+            "choices": {"status": "warn" if choices else "pass", "oversized": choices},
             # warn-only runtime census; drawing_check.py owns the blocking source-level gate
             "drawing": graphics,
         },
@@ -182,6 +301,11 @@ def evaluate(data, require_assets=False, allow_indeterminate=False):
             "em_dashes": em_dashes,
             "runtime_large_svgs": graphics["large_svgs"],
             "runtime_canvases": graphics["canvases"],
+            "small_targets": len(small_targets),
+            "type_too_small": len(type_block),
+            "measure_too_wide": len(measure_block),
+            "long_text_blocks": len(density),
+            "oversized_choice_sets": len(choices),
         },
     }
 
@@ -198,7 +322,8 @@ def main():
     a = ap.parse_args()
     with open(a.extract_json) as f:
         data = json.load(f)
-    result = evaluate(data, require_assets=a.require_assets, allow_indeterminate=a.allow_indeterminate)
+    result = evaluate(data, require_assets=a.require_assets,
+                      allow_indeterminate=a.allow_indeterminate, breakpoint=a.breakpoint)
     result["breakpoint"] = a.breakpoint
     out = json.dumps(result, indent=2)
     if a.out:

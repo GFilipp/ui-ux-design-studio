@@ -22,6 +22,13 @@ Fill this from REAL sources only (Stage 0). No fabrication. The human approves t
     - <visual / section> -> <library:component | mcp-image | asset:path | type-only>
     - <one line per hero and section visual; if a source is unknown, resolve it via the component-scout before building>
 
+## 4b. Composition (answer these; they are judged at the pick, not by the machine)
+- Attention order: what the eye lands on 1st / 2nd / 3rd. Put the strongest beats FIRST and LAST — the middle is what gets forgotten (serial position effect), and the final impression colours the whole memory (peak-end rule).
+- The ONE dominant element: name the single thing that is deliberately different in size, colour or motion. If everything competes, nothing wins (Von Restorff effect).
+- Grouping: how do related items read as a set — by proximity, shared styling, or a shared container (the Gestalt laws: proximity, similarity, uniform connectedness, Prägnanz)? Say which device you are using.
+- Choice load: how many options at each decision point? Fewer, clearer choices decide faster (Hick's law); a set beyond ~7 stops being scannable (Miller's law).
+- Convention: which patterns do we deliberately NOT reinvent, because users already expect them to work a certain way (Jakob's law)? Using real library components is usually how this is satisfied.
+
 ## 5. Hard DON'TS (from RULES.md, confirm each)
 - [ ] No negging the customer (no "you can't afford")
 - [ ] Em dashes rarely, never the default connector

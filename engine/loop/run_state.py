@@ -8,6 +8,7 @@ is surfaced in the ship summary, so degradation is always visible and chosen.
 Usage:
   run_state.py init   --file design-run.json --project NAME --surface web --brand-kit PATH
   run_state.py gate   --file design-run.json --name contrast --status pass|fail [--detail '...']
+                                                      # exit 0 on pass, 2 on fail (a recorded halt, not an error)
   run_state.py override --file design-run.json --gate contrast --reason "deadline; ship anyway"
   run_state.py ship-check --file design-run.json     # exit 0 ship-ok, 3 blocked
   run_state.py done   --file design-run.json          # finalize: all gates pass -> remove the file
@@ -24,7 +25,12 @@ import re
 import subprocess
 import sys
 
-GATES = ["brand_kit", "brief", "references", "assets", "no_drawing", "contrast", "orphans", "layout", "responsive", "human_pick"]
+GATES = ["brand_kit", "brief", "references", "assets", "no_drawing",
+         "contrast", "orphans", "layout", "console", "targets", "type_size", "measure",
+         "responsive", "human_pick"]
+# console/targets/type_size/measure are BLOCKING in floor_check.py but were absent here, so a
+# build with console errors or 20px tap targets could reach SHIP OK. Documented as gated in four
+# places while being enforced in none (2026-09-08 audit).
 
 # The references gate is COUNTED, not asserted: `gate --name references --status pass` is
 # refused until this many real references are recorded via `references --add`, and ship-check
