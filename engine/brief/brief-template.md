@@ -15,7 +15,7 @@ Fill this from REAL sources only (Stage 0). No fabrication. The human approves t
 - <2 to 4 beats forming a narrative: the situation, the turn, the outcome>. Not a feature list.
 
 ## 4. Visual direction
-- References (the bar): <3 or more named exemplars, one line each on why. Record each with `run_state.py references --add`; the gate counts them.>
+- References (the bar): <3 or more exemplars, one line each on why. Record each with `run_state.py references --file design-run.json --add <path-or-url>`. The gate COUNTS these and refuses to pass below 3; each must resolve (an existing screenshot file, or an http(s) URL with a real host), so a bare name does not count.>
 - Brand DNA (from the kit): <tokens, type, motion appetite, do and do-not>
 - The bar in one phrase: <e.g. concept-car, product-as-hero, editorial-minimal>
 - Visual sourcing plan (every planned visual maps to a real source; NO hand-drawing):

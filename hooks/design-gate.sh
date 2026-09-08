@@ -57,12 +57,18 @@ PY
     if [ "$OVR" != "yes" ]; then
       echo "design-gate: hand-authored illustration-scale SVG in authored source (the no_drawing gate reads clean or is stale; the scan is authoritative)." >&2
       cat /tmp/design-drawing.out >&2
-      echo "Source it from a component library, mcp-image, or a real brand asset. If genuinely intentional, log: run_state.py override --gate no_drawing --reason '...'." >&2
+      echo "Source it from a component library, mcp-image, or a real brand asset. If genuinely intentional, log: run_state.py override --file design-run.json --gate no_drawing --reason '...'." >&2
       exit 2
     fi
+  elif [ "$DRC" = "4" ]; then
+    # Usage error: the scanner NEVER RAN. Exit 4 exists so this cannot be mistaken for the
+    # exit-2 "soft finding, overridden, proceed" path, which is what used to happen.
+    echo "design-gate: drawing_check was invoked incorrectly (exit 4) — the anti-drawing scan did NOT run. Fix the invocation; do not treat this as a clean scan." >&2
+    cat /tmp/design-drawing.out >&2
+    exit 2
   elif [ "$DRC" != "0" ]; then
-    # Scanner error (missing dep, bad args). Do not wedge every session; warn loudly and continue.
-    echo "design-gate: WARNING — drawing_check did not run cleanly (exit $DRC); skipping the drawing backstop this turn." >&2
+    # Unexpected failure (missing dep, crash). Warn loudly; ship-check/done fail closed on this.
+    echo "design-gate: WARNING — drawing_check did not run cleanly (exit $DRC); the drawing backstop did NOT cover this turn." >&2
     cat /tmp/design-drawing.out >&2
   fi
 fi
@@ -95,5 +101,5 @@ fi
 
 echo "design-gate: floor not passed. Do not finish this build yet." >&2
 cat /tmp/design-gate.out >&2
-echo "Three exits: (1) if 'brief' is halted, lock the human-approved brief first (Stage 1; run_state.py gate --name brief --status pass); (2) pass the failing gates via the floor loop or log an explicit override (run_state.py override --gate <g> --reason '...'); (3) abort the run entirely (run_state.py cancel --file design-run.json)." >&2
+echo "Three exits: (1) if 'brief' is halted, lock the human-approved brief first (Stage 1; run_state.py gate --name brief --status pass); (2) pass the failing gates via the floor loop or log an explicit override (run_state.py override --file design-run.json --gate <g> --reason '...'); (3) abort the run entirely (run_state.py cancel --file design-run.json)." >&2
 exit 2

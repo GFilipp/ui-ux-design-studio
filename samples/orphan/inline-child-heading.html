@@ -1,0 +1,14 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>orphan: inline-child heading</title></head>
+<body style="background:#fff;color:#111;font-family:system-ui;margin:0;padding:16px">
+<!--
+Regression fixture for the 2026-09-08 audit finding: the orphan gate never measured a heading
+that contains an element child. `<h1>Build ... <span>dramatically</span></h1>` was skipped twice
+over: directText() attributed only the leading text to the h1 (totalWords=1, under the gate's
+floor) and singleTextNode() returned null on the element child, so lastLineWords was null.
+The dominant marketing-headline shape silently reported "pass".
+
+At 300px / 40px the last word wraps alone, so this MUST fail the orphan gate (exit 2).
+-->
+<h1 style="font-size:40px;font-weight:700;line-height:1.1;width:300px;margin:0">Build your revenue pipeline <span style="color:#c2410c">dramatically</span></h1>
+</body></html>

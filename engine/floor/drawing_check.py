@@ -25,7 +25,8 @@ Modes:
   (both honor --run-file design-run.json for base_sha / vendored[] / brand-kit logo)
 
 Exit: 0 clean (warns allowed) | 2 block-soft (illustration SVG, overridable)
-      | 3 block-hard (canvas 2D drawing, non-overridable).
+      | 3 block-hard (canvas 2D drawing, non-overridable) | 4 usage error (distinct from 2 on
+      purpose: a scanner that never RAN must not read as a scanned-and-waived soft finding).
 """
 import argparse
 import base64
@@ -106,6 +107,17 @@ def path_parts(p):
     return [seg for seg in os.path.normpath(p).split(os.sep) if seg not in ("", ".")]
 
 
+def rel_parts(abspath, root):
+    # Path segments RELATIVE to the scan root. Matching exclusions/vendored dirs against the
+    # ABSOLUTE path meant a repo living under any dir named build/out/dist/.next excluded every
+    # file and voided the whole scan, invisibly (2026-09-08 audit).
+    try:
+        rel = os.path.relpath(os.path.abspath(abspath), os.path.abspath(root))
+    except ValueError:  # different drive on Windows
+        rel = os.path.abspath(abspath)
+    return [seg for seg in rel.split(os.sep) if seg not in ("", ".")]
+
+
 def is_excluded(parts):
     return any(seg in EXCLUDE_SEGMENTS for seg in parts)
 
@@ -162,10 +174,11 @@ def extra_vendored_from_components_json(root):
     return subs
 
 
-def is_vendored(abspath, vendored_abs, brand_abs, extra_subs):
+def is_vendored(abspath, vendored_abs, brand_abs, extra_subs, root="."):
     # Provenance allowlist. Path-prefix matching only (no basename fallback — matching by
-    # basename would exempt every file of that name repo-wide).
-    parts = path_parts(abspath)
+    # basename would exempt every file of that name repo-wide). Segments are matched RELATIVE
+    # to root so a repo living under e.g. /Users/x/components/ui/... is not blanket-exempt.
+    parts = rel_parts(abspath, root)
     for sub in VENDORED_SUBPATHS + extra_subs:
         if subpath_matches(parts, sub):
             return "vendored-dir"
@@ -236,18 +249,63 @@ def decode_datauri(rest):
         return data
 
 
+def find_canvas2d_draw(text):
+    # LAYERED, because both extremes are wrong:
+    #   - matching getContext('2d') and ANY `.prim(` independently made `ctx.measureText()`
+    #     beside an unrelated `Array(12).fill(0)` a NON-OVERRIDABLE block that wedged the run;
+    #   - requiring the primitive on the bound identifier let real drawing escape entirely,
+    #     e.g. `const c = el.getContext('2d'); paint(c)` with `ctx.arc()` inside the helper,
+    #     or a simple alias `const d = g`. Verified false negatives, worse than over-blocking.
+    # So: PROVABLE binding -> hard (non-overridable). Unprovable coexistence of a 2D context
+    # and draw primitives -> soft (blocks, but a human can override with a reason).
+    # Returns (line, why, severity) or None.
+    prims = "|".join(DRAW_PRIMS)
+    m = re.search(r"\bnew\s+Path2D\b", text)
+    if m:
+        return line_of(text, m.start()), "new Path2D", "hard"
+    ctx2d = re.search(r"getContext\(\s*[\"'`]2d[\"'`]", text)
+    if not ctx2d:
+        return None
+    # Chained straight off the call: getContext('2d')!.beginPath()
+    m = re.search(r"getContext\(\s*[\"'`]2d[\"'`]\s*\)\s*[!?]?\s*\.\s*(%s)\s*\(" % prims, text)
+    if m:
+        return line_of(text, m.start()), m.group(1), "hard"
+    # Bound to an identifier: const ctx = el.getContext('2d')  ->  ctx.fill(...)
+    # Scan BACKWARD in a BOUNDED window. A forward pattern like `[^;\n=]*getContext\(`
+    # backtracks catastrophically on one very long line (a 300KB padded line hung the
+    # scanner for minutes), so the window is capped.
+    ids = set()
+    for gm in re.finditer(r"getContext\(\s*[\"'`]2d[\"'`]", text):
+        head = text[max(0, gm.start() - 400):gm.start()]
+        names = re.findall(r"([A-Za-z_$][\w$]*)\s*(?:!|\?)?\s*(?::[^=\n]{0,120})?=", head)
+        if names:
+            ids.add(names[-1])
+    for ident in sorted(ids):
+        m = re.search(r"\b%s\s*[!?]?\s*\.\s*(%s)\s*\(" % (re.escape(ident), prims), text)
+        if m:
+            return line_of(text, m.start()), m.group(1), "hard"
+    # Cannot prove the binding, but a 2D context and draw primitives coexist in one authored
+    # file. Too suspicious to pass, too unproven to be non-overridable.
+    m = re.search(r"\.(%s)\s*\(" % prims, text)
+    if m:
+        return line_of(text, m.start()), m.group(1) + " (context binding unproven)", "soft"
+    return None
+
+
 def scan_text(rel, text):
     findings = []
 
     # 1) Canvas 2D drawing (highest precision -> hard). WebGL -> warn (three/shaders, not the threat).
     ctx2d = re.search(r"getContext\(\s*[\"'`]2d[\"'`]", text)
-    prim = re.search(r"\.(%s)\s*\(" % "|".join(DRAW_PRIMS), text)
-    path2d = re.search(r"\bnew\s+Path2D\b", text)
-    if ctx2d and (prim or path2d):
-        why = prim.group(1) if prim else "new Path2D"
-        findings.append({"file": rel, "line": line_of(text, ctx2d.start()),
-                         "kind": "canvas-2d", "severity": "hard",
-                         "detail": "getContext('2d') + draw primitive (%s) in an authored file" % why})
+    hit = find_canvas2d_draw(text)
+    if hit:
+        line, why, sev = hit
+        detail = ("getContext('2d') + draw primitive (%s) called on the context" % why) if sev == "hard" \
+            else ("getContext('2d') and draw primitive (%s) in one authored file; could not prove "
+                  "the primitive is called on the context, so this blocks softly — override with a "
+                  "reason if it is genuinely not hand-drawing" % why)
+        findings.append({"file": rel, "line": line, "kind": "canvas-2d", "severity": sev,
+                         "detail": detail})
     else:
         webgl = re.search(r"getContext\(\s*[\"'`]webgl2?[\"'`]", text)
         if webgl:
@@ -305,7 +363,7 @@ def scan_text(rel, text):
 def gather_git_diff(root, base):
     rc, out, _ = run_git(["rev-parse", "--show-toplevel"], root)
     if rc != 0:
-        return None  # not a git repo -> caller falls back to full-tree
+        return None, False  # not a git repo -> caller falls back to full-tree
     top = out.strip()
     files = set()
 
@@ -322,11 +380,17 @@ def gather_git_diff(root, base):
     add(["diff", "--name-only", "-z", "--cached"])
     add(["ls-files", "--others", "--exclude-standard", "-z"])
     base_ok = add(["diff", "--name-only", "-z", "%s" % base, "HEAD"]) if base else False
-    if not base or not base_ok:
-        # No reliable baseline (init outside git, unborn repo, bad SHA): a committed build has
-        # empty diffs, so scan ALL tracked source too rather than miss the whole build.
-        add(["ls-files", "-z"])
-    return sorted(files)
+    degraded = not base or not base_ok
+    # NOTE: with no usable baseline we deliberately do NOT widen to `ls-files` (all tracked).
+    # That fallback made pre-existing code the run never touched block `done` permanently and
+    # non-overridably (2026-09-08 audit reproduced it in this very repo). Narrow coverage that
+    # the operator is TOLD about beats a scan that wedges every run.
+    # Bound to `root`: git commands run at the repo toplevel, so in a monorepo an unrelated
+    # package's canvas code was blocking a run scoped to a sibling package.
+    rootr = os.path.realpath(root)
+    files = {f for f in files
+             if os.path.realpath(f) == rootr or os.path.realpath(f).startswith(rootr + os.sep)}
+    return sorted(files), degraded
 
 
 def walk_tree(root):
@@ -338,9 +402,8 @@ def walk_tree(root):
     return out
 
 
-def eligible(abspath):
-    parts = path_parts(abspath)
-    if is_excluded(parts):
+def eligible(abspath, root="."):
+    if is_excluded(rel_parts(abspath, root)):
         return False
     base = os.path.basename(abspath)
     _, ext = os.path.splitext(abspath)
@@ -366,8 +429,18 @@ def resolve(root, items):
     return [p if os.path.isabs(p) else os.path.normpath(os.path.join(root, p)) for p in items]
 
 
+class _UsageExit4(argparse.ArgumentParser):
+    # argparse exits 2 on a usage error, which COLLIDES with our exit 2 = "soft finding".
+    # The Stop hook read a scanner that never ran as a scanned-and-waived result
+    # (2026-09-08 audit). Usage errors get their own code.
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        sys.stderr.write("%s: error: %s\n" % (self.prog, message))
+        sys.exit(4)
+
+
 def main():
-    ap = argparse.ArgumentParser(description="Provenance-aware anti-hand-drawing scanner.")
+    ap = _UsageExit4(description="Provenance-aware anti-hand-drawing scanner.")
     ap.add_argument("paths", nargs="*", help="explicit files/dirs to scan")
     ap.add_argument("--git-diff", action="store_true", help="scan changed + untracked web-source in the cwd repo")
     ap.add_argument("--base", default=None, help="baseline SHA for the git-diff (else HEAD + working tree + all tracked)")
@@ -390,21 +463,25 @@ def main():
 
     fallback_note = None
     if a.git_diff:
-        gathered = gather_git_diff(root, base)
+        gathered, degraded = gather_git_diff(root, base)
         if gathered is None:
             fallback_note = "not a git repo; scanned the tree by extension"
             candidates = walk_tree(root)
         else:
             candidates = gathered
+            if degraded:
+                fallback_note = ("NO USABLE BASELINE (base_sha missing or unresolvable): scanned only "
+                                 "working-tree changes + untracked files. Committed work was NOT "
+                                 "re-scanned. Re-run `run_state.py init` inside the git repo for full coverage.")
     else:
         candidates = collect_paths(a.paths)
 
     findings, scanned, exempt = [], [], []
     for p in candidates:
         ap_ = os.path.abspath(p)
-        if not os.path.isfile(ap_) or not eligible(ap_):
+        if not os.path.isfile(ap_) or not eligible(ap_, root):
             continue
-        reason = is_vendored(ap_, vendored_abs, brand_abs, extra_subs)
+        reason = is_vendored(ap_, vendored_abs, brand_abs, extra_subs, root)
         rel = os.path.relpath(ap_, root)
         if reason:
             exempt.append({"file": rel, "reason": reason})
@@ -413,17 +490,23 @@ def main():
             size = os.path.getsize(ap_)
         except OSError:
             continue
-        if size > MAX_BYTES:
-            # Do not silently skip an eligible oversized file (padding-to-evade); flag it (warn).
-            findings.append({"file": rel, "line": 1, "kind": "oversized-skip", "severity": "warn",
-                             "detail": "%dB > %dB, not scanned; confirm it is not hand-drawn" % (size, MAX_BYTES)})
-            continue
+        # Oversized files are SCANNED to the cap, not skipped. Skipping with severity "warn"
+        # mapped to exit 0, so appending 256KB of padding downgraded the NON-OVERRIDABLE canvas
+        # block to a clean pass (2026-09-08 audit). Scan the head, then block on the unscanned
+        # remainder so the truncation itself can never be a silent pass.
+        truncated = size > MAX_BYTES
         try:
-            text = open(ap_, encoding="utf-8", errors="replace").read()
+            with open(ap_, encoding="utf-8", errors="replace") as fh:
+                text = fh.read(MAX_BYTES) if truncated else fh.read()
         except OSError:
             continue
         scanned.append(rel)
         findings.extend(scan_text(rel, text))
+        if truncated:
+            findings.append({"file": rel, "line": 1, "kind": "oversized-truncated", "severity": "soft",
+                             "detail": "%dB > %dB: only the first %dB were scanned; the remainder is "
+                                       "unverified. Split the file or confirm it is not hand-drawn."
+                                       % (size, MAX_BYTES, MAX_BYTES)})
 
     counts = {"hard": 0, "soft": 0, "warn": 0}
     for f in findings:

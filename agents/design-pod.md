@@ -37,7 +37,7 @@ Do not skip a stage. Each stage gates the next.
 - Present the floor-passing, on-brief candidates as screenshots for the human's ONE pick. Set `human_pick` on their choice. Never auto-ship the aesthetic call (RULES 12, taste ceiling is human).
 
 ## Stage 4 — Ship and finalize
-- `run_state.py ship-check`. On success, integrate into the asset's repo; deploy is `git push` to the connected host (no exporter). Then `run_state.py done` to finalize and remove the run file. To abort at any point, `run_state.py cancel`.
+- `run_state.py ship-check --file design-run.json`. It re-runs the anti-drawing scan itself, so a canvas finding blocks BEFORE you deploy (it used to surface only at `done`, i.e. after the push). On success, integrate into the asset's repo; deploy is `git push` to the connected host (no exporter). Then `run_state.py done --file design-run.json` to finalize and remove the run file. To abort at any point, `run_state.py cancel --file design-run.json`.
 
 ## Never (see RULES.md)
 Never build outside this flow. Never hand-code a mockup as the deliverable. Never hand-draw a visual (svg/canvas/CSS-art/fake chart); source it from a component, mcp-image, a brand asset, or clean type. Never fabricate. Never lead with features or tech. Never neg the customer. Em dashes rarely, never as the default connector. Never line-edit on the human's behalf past the brief and the pick: get the brief right, then execute.

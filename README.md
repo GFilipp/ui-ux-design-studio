@@ -49,8 +49,10 @@ python3 engine/loop/run_state.py ship-check --file design-run.json
 
 ## Status
 Phase 1 (lean core): deterministic floor + fail-loud state machine + design-pod + /design-studio
-command + Stop-hook gate. Self-tests in `samples/`. Since shipped: image-gen (`mcp-image`), 21st.dev
+command + Stop-hook gate. Self-tests: `bash engine/test/run-selftests.sh` (52 cases; fixtures in `samples/`). Every 2026-09-08 audit finding has a named regression case. Since shipped: image-gen (`mcp-image`), 21st.dev
 components, the provenance-based anti-drawing scanner (`engine/floor/drawing_check.py`), and a
 counted references gate. Deferred: divergent-direction automation, multi-surface expansion, Vercel
-audit skills. Rejected on price, not capability: Lazyweb reference library ($39/mo; Mobbin covers the
-same category for less) and the Figma MCP (only pays off if work originates in Figma).
+audit skills. Rejected: Lazyweb on price (the screen library is $39/mo; Mobbin covers the category for less),
+the Figma MCP on fit (it only pays off if work originates in Figma; its "free during beta" applies
+to write-to-canvas, not the server). kibo-ui was wired 2026-09-08 and dropped the same day: its
+MCP endpoint returns HTTP 500 on initialize.

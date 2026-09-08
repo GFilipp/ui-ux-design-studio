@@ -19,6 +19,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -28,6 +29,10 @@ GATES = ["brand_kit", "brief", "references", "assets", "no_drawing", "contrast",
 # refused until this many real references are recorded via `references --add`, and ship-check
 # and done re-verify the count. Before this, the gate passed on the model's word alone.
 REFERENCES_MIN = 3
+
+# The human's taste pick has no override path: `override --gate human_pick` let the model
+# self-authorize the one decision RULES 12 reserves for the human (2026-09-08 audit).
+NON_OVERRIDABLE_GATES = {"human_pick"}
 
 
 def git_head(cwd):
@@ -39,46 +44,88 @@ def git_head(cwd):
         return None
 
 
-def drawing_hard(run_file):
-    # Non-overridable canvas hard-block, enforced at finalize too (not just the Stop hook):
-    # a model could override no_drawing then `done`, and the hook no-ops once the run file is gone.
+def drawing_scan_code(run_file):
+    # Run the anti-drawing scanner and return its exit code, or None if it could not run.
+    # None/unexpected is NOT "clean" — see drawing_unverifiable.
     dc = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "floor", "drawing_check.py")
     if not os.path.exists(dc):
-        return False
+        return None
     repo_dir = os.path.dirname(os.path.abspath(run_file)) or "."
     try:
         p = subprocess.run([sys.executable, dc, "--git-diff", "--root", ".",
                             "--run-file", os.path.abspath(run_file)],
                            cwd=repo_dir, capture_output=True, text=True)
-        return p.returncode == 3
+        return p.returncode
     except (FileNotFoundError, OSError):
-        return False
+        return None
+
+
+def drawing_hard(run_file):
+    # Non-overridable canvas hard-block, enforced at finalize AND ship-check (not just the Stop
+    # hook): a model could override no_drawing then `done`, and the hook no-ops once the run
+    # file is gone. ship-check matters because the pod deploys BETWEEN ship-check and done.
+    return drawing_scan_code(run_file) == 3
+
+
+def drawing_unverifiable(run_file):
+    # FAIL CLOSED. A missing scanner, a crash (1), a usage error (4), or any unexpected code is
+    # "cannot verify", never "clean" — previously all of these silently allowed the ship.
+    code = drawing_scan_code(run_file)
+    return code is None or code not in (0, 2, 3)
+
+
+URL_RE = re.compile(r"^https?://([^/\s]+)", re.I)
+
+
+def url_host(ref):
+    # A reference URL needs a plausible host. A single-label host ("https://a") is padding,
+    # not a reference; localhost is kept because local preview URLs are legitimate exemplars.
+    m = URL_RE.match(ref)
+    if not m:
+        return None
+    host = m.group(1).split("@")[-1].split(":")[0].lower()
+    if host in ("localhost", "127.0.0.1", "[::1]"):
+        return host
+    return host if ("." in host and len(host) >= 4) else None
 
 
 def reference_is_real(ref, base_dir):
-    # A reference counts only if it still resolves to something: an http(s) URL, or a local
-    # path that EXISTS. Existence is re-checked on every count, not just at write time —
-    # otherwise hand-editing design-run.json with three invented paths would satisfy the gate,
-    # which is the exact assertion-passing this gate exists to stop.
+    # A reference counts only if it resolves to an actual artifact: a URL with a real host, or
+    # a local FILE that exists. Re-checked on every count, not just at write time.
+    # Deliberately strict, because the 2026-09-08 audit padded the gate to 3 with "https://",
+    # ".", "..", and directories — os.path.exists accepts dirs and "/", and a bare scheme is
+    # not a reference. isfile + a required host closes both.
     if not isinstance(ref, str) or not ref.strip():
         return False
     r = ref.strip()
-    if r.startswith("http://") or r.startswith("https://"):
+    if url_host(r):
         return True
+    if "://" in r:
+        return False  # unverifiable scheme, bare "https://", or a single-label host
     p = r if os.path.isabs(r) else os.path.join(base_dir, r)
-    return os.path.exists(p)
+    return os.path.isfile(p)
+
+
+def reference_key(ref, base_dir):
+    # Identity for dedupe. Local paths collapse via realpath so refs/a.png, ./refs/a.png and
+    # refs/../refs/a.png are ONE reference (string dedupe let the same file count three times).
+    r = ref.strip()
+    if url_host(r):
+        return r.rstrip("/").lower()
+    p = r if os.path.isabs(r) else os.path.join(base_dir, r)
+    return os.path.realpath(p)
 
 
 def references_count(state, base_dir):
     refs = state.get("references")
     if not isinstance(refs, list):
         return 0
-    seen, n = set(), 0
+    seen = set()
     for r in refs:
-        if isinstance(r, str) and r.strip() not in seen and reference_is_real(r, base_dir):
-            seen.add(r.strip())
-            n += 1
-    return n
+        if not isinstance(r, str) or not reference_is_real(r, base_dir):
+            continue
+        seen.add(reference_key(r, base_dir))
+    return len(seen)
 
 
 def references_shortfall(state, base_dir):
@@ -170,6 +217,11 @@ def cmd_override(a):
     if a.gate not in state["gates"]:
         sys.stderr.write("unknown gate: %s\n" % a.gate)
         sys.exit(1)
+    if a.gate in NON_OVERRIDABLE_GATES:
+        sys.stderr.write("HALT: '%s' cannot be overridden. The taste pick belongs to the human "
+                         "(RULES 12); the model may neither pass nor override it. Present the "
+                         "candidates and record the human's actual choice.\n" % a.gate)
+        sys.exit(3)
     if not a.reason or not a.reason.strip():
         sys.stderr.write("HALT: override requires a non-empty --reason.\n")
         sys.exit(3)
@@ -208,6 +260,18 @@ def cmd_ship_check(a):
               "(stale or asserted). Record them with `references --add`, or log an override."
               % (short, REFERENCES_MIN))
         sys.exit(3)
+    # The canvas hard-block must fire HERE, not only at `done`: the pod integrates and
+    # `git push`es between ship-check and done, so checking only at done fired post-deploy.
+    code = drawing_scan_code(a.file)
+    if code is None or code not in (0, 2, 3):
+        print("BLOCKED — could not verify the build is free of hand-drawn canvas "
+              "(drawing_check unavailable or errored, exit=%s). Refusing to report SHIP OK on an "
+              "unverified build." % code)
+        sys.exit(3)
+    if code == 3:
+        print("BLOCKED — hand-drawn <canvas> detected in the build (non-overridable). Remove it "
+              "and source the visual from a component, mcp-image, or clean type.")
+        sys.exit(3)
     print("SHIP OK.")
     sys.exit(0)
 
@@ -234,7 +298,13 @@ def cmd_done(a):
         sys.stderr.write("cannot finalize: references gate reads pass but only %d of %d references resolve. "
                          "Record them with `references --add`, or log an override.\n" % (short, REFERENCES_MIN))
         sys.exit(3)
-    if drawing_hard(a.file):
+    code = drawing_scan_code(a.file)
+    if code is None or code not in (0, 2, 3):
+        sys.stderr.write("cannot finalize: could not verify the build is free of hand-drawn canvas "
+                         "(drawing_check unavailable or errored, exit=%s). Fail-closed: fix the "
+                         "scanner or run `cancel`.\n" % code)
+        sys.exit(3)
+    if code == 3:
         sys.stderr.write("cannot finalize: hand-drawn <canvas> detected in the build (non-overridable, even with a no_drawing override). Remove it and source the visual from a component, mcp-image, or clean type.\n")
         sys.exit(3)
     overrides = [g for g, v in (state.get("gates") or {}).items()
@@ -253,7 +323,25 @@ def cmd_vendored(a):
     state = load(a.file)
     if not isinstance(state.get("vendored"), list):
         state["vendored"] = []
-    added = [p for p in (a.add or []) if p and p not in state["vendored"]]
+    # VALIDATE. drawing_check exempts these by path PREFIX, so an unvalidated `--add .` (or "..",
+    # or "/") exempted the entire repo and silently disabled the scanner in one command
+    # (2026-09-08 audit). An entry must exist and live strictly INSIDE the run directory.
+    base_real = os.path.realpath(run_dir(a.file))
+    bad = []
+    for p in (a.add or []):
+        q = p.strip() if isinstance(p, str) else ""
+        if not q:
+            continue
+        full = os.path.realpath(q if os.path.isabs(q) else os.path.join(base_real, q))
+        if not os.path.exists(full):
+            bad.append("%s (does not exist)" % q)
+        elif full == base_real or not full.startswith(base_real + os.sep):
+            bad.append("%s (is the run dir or outside it — that would exempt everything)" % q)
+    if bad:
+        sys.stderr.write("HALT: refusing to record vendored path(s): %s\n" % "; ".join(bad))
+        sys.exit(3)
+    added = [p.strip() for p in (a.add or [])
+             if isinstance(p, str) and p.strip() and p.strip() not in state["vendored"]]
     state["vendored"].extend(added)
     save(a.file, state)
     print("vendored paths recorded (+%d, total %d): %s" % (len(added), len(state["vendored"]), ", ".join(added) or "(none)"))

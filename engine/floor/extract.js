@@ -48,17 +48,31 @@
     }
     return t.trim();
   }
-  // Only headings/simple single-text-node elements get reliable line analysis.
-  function singleTextNode(el) {
-    var tn = null, elemChildren = 0;
-    for (var i = 0; i < el.childNodes.length; i++) {
-      var n = el.childNodes[i];
-      if (n.nodeType === 1) elemChildren++;
-      else if (n.nodeType === 3 && n.nodeValue.trim()) tn = n;
+  // Pure inline wrappers: an element whose children are all these still owns ONE line of text.
+  var INLINE_WRAPPERS = { SPAN: 1, EM: 1, B: 1, STRONG: 1, I: 1, A: 1, MARK: 1, SMALL: 1,
+                          CODE: 1, U: 1, S: 1, SUP: 1, SUB: 1, ABBR: 1, BR: 1, WBR: 1 };
+  function onlyInlineChildren(el) {
+    for (var i = 0; i < el.children.length; i++) {
+      if (!INLINE_WRAPPERS[el.children[i].tagName]) return false;
     }
-    return elemChildren === 0 && tn ? tn : null;
+    return true;
+  }
+  // The text this element is responsible for. Normally its DIRECT text, but when every element
+  // child is a pure inline wrapper the whole textContent belongs to it:
+  // `<h1>Build <span>faster</span></h1>` is ONE headline. Attributing only "Build" to the h1
+  // made the orphan gate skip it as totalWords<=1 while reporting pass.
+  function ownText(el) {
+    if (el.children.length && onlyInlineChildren(el)) return (el.textContent || "").trim();
+    return directText(el);
+  }
+  function collectTextNodes(el) {
+    var out = [], walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null), n;
+    while ((n = walker.nextNode())) { if (n.nodeValue && n.nodeValue.trim()) out.push(n); }
+    return out;
   }
   // Count words sharing the top of the last visual line. 1 word alone => orphan.
+  // Measures ACROSS inline element children. Previously it bailed out (returned null) on any
+  // element child, so the dominant marketing-headline shape was never measured at all.
   function lastLineWordCount(el) {
     // React SSR separates adjacent text parts with comment nodes; strip them so
     // normalize() can merge the parts back into one measurable text node.
@@ -66,25 +80,31 @@
       if (el.childNodes[ci].nodeType === 8) el.removeChild(el.childNodes[ci]);
     }
     el.normalize(); // merge adjacent text nodes (React splits {a}{'\u00A0'}{b} into 3)
-    var tn = singleTextNode(el);
-    if (!tn) return null;
-    var text = tn.nodeValue;
-    var words = text.trim().split(/\s+/);
-    if (words.length < 2) return words.length;
+    if (el.children.length && !onlyInlineChildren(el)) return null; // block children: not one line
+    var tns = collectTextNodes(el);
+    if (!tns.length) return null;
+    var ranges = [];
+    for (var i = 0; i < tns.length; i++) {
+      var tn = tns[i], txt = tn.nodeValue, re = /\S+/g, m;
+      while ((m = re.exec(txt)) !== null) {
+        var r = document.createRange();
+        r.setStart(tn, m.index);
+        r.setEnd(tn, m.index + m[0].length);
+        ranges.push(r);
+      }
+    }
+    if (ranges.length < 2) return ranges.length;
     var full = document.createRange();
-    full.selectNodeContents(tn);
+    full.selectNodeContents(el);
     var rects = full.getClientRects();
-    if (rects.length < 2) return words.length;
+    if (!rects.length) return ranges.length;
     var lastTop = rects[rects.length - 1].top;
-    var count = 0, re = /\S+/g, m;
-    while ((m = re.exec(text)) !== null) {
-      var r = document.createRange();
-      r.setStart(tn, m.index);
-      r.setEnd(tn, m.index + m[0].length);
+    var count = 0;
+    for (var j = 0; j < ranges.length; j++) {
       // A word broken across lines (soft hyphen break) renders partly on the
       // last line; attribute it to its LAST rect, not its bounding top.
-      var wrects = r.getClientRects();
-      var wtop = wrects.length ? wrects[wrects.length - 1].top : r.getBoundingClientRect().top;
+      var wrects = ranges[j].getClientRects();
+      var wtop = wrects.length ? wrects[wrects.length - 1].top : ranges[j].getBoundingClientRect().top;
       if (Math.abs(wtop - lastTop) <= 2) count++;
     }
     return count;
@@ -96,7 +116,7 @@
   var all = document.querySelectorAll("body *");
   for (var i = 0; i < all.length; i++) {
     var el = all[i];
-    var txt = directText(el);
+    var txt = ownText(el);
     if (!txt || !isVisible(el)) continue;
     var cs = getComputedStyle(el);
     var eb = effectiveBg(el);
