@@ -1,11 +1,27 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>ux: small targets</title></head>
 <body style="background:#fff;color:#111;font-family:system-ui;margin:0;padding:16px">
-<!-- Fitts fixture: a 20x20 icon button and a 60x18 pill are both under the 44px touch floor.
-     The inline prose link must NOT be flagged (it is text, not a standalone hit area). -->
+<!--
+Fitts fixture. Expected `targets.small` counts:
+  MOBILE (44px floor): close 20x20, Buy 60x18, add 32x32, email input h20, plan select h20,
+                       menu div 30x30, two non-flex inline nav links (~17px tall) = 8
+  DESKTOP (24px floor): close, Buy, input, select, the two ~17px nav links = 6
+Never flagged: the inline link INSIDE prose ("full comparison"), the 120x48 CTA, and the
+exact-44 boundary button (min(w,h) < 44 is false at 44).
+-->
 <h1 style="font-size:28px;margin:0 0 12px">Pick a plan</h1>
 <p style="font-size:16px;max-width:32ch">Read the <a href="#" style="color:#0b57d0">full comparison</a> before choosing.</p>
 <button aria-label="close" style="width:20px;height:20px;padding:0;border:1px solid #999;background:#fff">x</button>
 <a href="#" style="display:inline-block;width:60px;height:18px;font-size:11px;background:#111;color:#fff;text-align:center">Buy</a>
 <button style="display:inline-block;width:120px;height:48px;font-size:16px;background:#111;color:#fff;border:0">Get started</button>
+<button aria-label="add" style="width:32px;height:32px;padding:0;border:1px solid #999;background:#fff">+</button>
+<button aria-label="ok" style="width:44px;height:44px;padding:0;border:1px solid #999;background:#fff">✓</button>
+<input type="text" placeholder="Email" style="height:20px;width:160px;font-size:14px;box-sizing:border-box;padding:0 6px">
+<select style="height:20px;width:120px;font-size:14px"><option>Monthly</option><option>Yearly</option></select>
+<div role="button" tabindex="0" aria-label="menu" style="display:inline-block;width:30px;height:30px;border:1px solid #999;text-align:center">≡</div>
+<!-- Non-flex nav: display:inline anchors whose <li> carries NO prose. These are hit areas, not prose links. -->
+<ul style="list-style:none;padding:0;margin:16px 0 0">
+  <li><a href="#" style="font-size:14px;color:#0b57d0">Pricing</a></li>
+  <li><a href="#" style="font-size:14px;color:#0b57d0">Docs</a></li>
+</ul>
 </body></html>

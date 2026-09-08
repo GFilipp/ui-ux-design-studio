@@ -29,5 +29,4 @@ references for the diff-vs-reference check. The rest are the memory-library back
 ## Captures (local, gitignored)
 Screenshots live in `exemplars/captures/` (NOT committed — third-party site captures stay local). Refresh
 with `node engine/floor/capture-refs.mjs`. Current corpus: 12/14 captured (linear, zed, tesla, arc, raycast,
-polestar, teenage-engineering, oura, stripe, tresmares, lando-norris, dropbox-brand). Unresolved: **Exat**
-(obscure URL — add it to `capture-refs.mjs` if you have it). The DNA rules above cover all 14 regardless.
+polestar, teenage-engineering, oura, stripe, tresmares, lando-norris, dropbox-brand). Unresolved: **2** — **Exat** and **Symphony of Vines**. Both are already entries in `capture-refs.mjs`; Exat's URL there is a self-documented guess, so the fix is the URL, not a new entry. The script exits 0 even when a capture fails, so trust the count on disk, not the exit code. The DNA rules above cover all 14 regardless.

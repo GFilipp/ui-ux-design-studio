@@ -22,7 +22,7 @@ Wire into `~/.claude/settings.json` (do this via the `update-config` skill, not 
 }
 ```
 
-## Optional: PreToolUse hard gate
+## NOT IMPLEMENTED (idea only): a PreToolUse hard gate
 A stricter variant blocks Write/Edit to web design-output files (`.tsx/.jsx/.html/.css/.astro`)
 while a run is active and unpassed. Stricter, but blunter (catches unrelated edits to those
 file types), so start with the Stop hook and add this only if builds still slip through.

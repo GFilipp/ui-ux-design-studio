@@ -121,8 +121,11 @@
   }
   // Accessible-ish label, only to make a finding readable.
   function labelOf(el) {
-    var t = (el.getAttribute("aria-label") || el.textContent || el.getAttribute("title")
-             || el.getAttribute("alt") || el.getAttribute("placeholder") || el.value || "").trim();
+    // a <select>'s textContent is every option concatenated ("MonthlyYearly"); use the chosen one.
+    var sel = (el.tagName === "SELECT" && el.options && el.selectedIndex >= 0) ? el.options[el.selectedIndex].text : "";
+    var t = (el.getAttribute("aria-label") || sel || el.textContent || el.getAttribute("title")
+             || el.getAttribute("alt") || el.getAttribute("placeholder")
+             || ((el.type === "checkbox" || el.type === "radio") ? "" : (el.value || "")) || "").trim();
     return t.slice(0, 60);
   }
   // Strip React SSR comment markers ONCE. Doing it per-element mutated the live DOM during the
@@ -179,7 +182,9 @@
   // --- interactive controls (Fitts: tap-target size) ---
   // Captured as a FIRST-CLASS list. Previously interactivity was incidental to text, so an
   // icon-only <button> or any <input> was invisible to every check.
-  var CTRL_SEL = 'a[href],button,input:not([type=hidden]),select,textarea,summary,' +
+  // disabled controls have no hit area; flagging them produced unfixable findings.
+  var CTRL_SEL = 'a[href],button:not([disabled]),input:not([type=hidden]):not([disabled]),' +
+                 'select:not([disabled]),textarea:not([disabled]),summary,' +
                  '[role=button],[role=link],[role=checkbox],[role=tab],[onclick]';
   var ctrls = document.querySelectorAll(CTRL_SEL);
   for (var ci2 = 0; ci2 < ctrls.length; ci2++) {
@@ -189,7 +194,11 @@
     var ccs = getComputedStyle(c);
     // An inline link inside a paragraph is text, not a tap target with its own hit area;
     // judging it by 44px would flag every prose link on the page.
-    var inlineInProse = ccs.display === "inline" && c.tagName === "A";
+    // Exempt ONLY a link inside prose: the parent must carry its own text around it. A bare
+    // <li><a> in a non-flex nav is display:inline too, and nine 18px nav links were slipping
+    // through as "prose" (flex-item anchors get blockified, so those were caught).
+    var pt = c.parentElement ? directText(c.parentElement) : "";
+    var inlineInProse = ccs.display === "inline" && c.tagName === "A" && pt.length > 0;
     report.controls.push({
       tag: c.tagName.toLowerCase(),
       type: (c.getAttribute("type") || c.getAttribute("role") || "").toLowerCase(),
@@ -211,11 +220,13 @@
     if (!isTrack && !isList) continue;
     var kids = 0;
     for (var ki = 0; ki < g.children.length; ki++) if (isVisible(g.children[ki])) kids++;
-    if (kids < 2) continue;
-    var navLinks = null;
-    if (g.tagName === "NAV" || g.closest("nav") === g) {
-      navLinks = g.querySelectorAll('a[href],[role=link]').length;
-    }
+    // The <nav> itself is always reported (even with one child, e.g. <nav><ul>…</ul></nav>, the
+    // canonical shape) and carries navLinks; inner lists report their own sibling count only,
+    // so a nav is never double-counted. `g.closest("nav") === g` was identical to the tagName
+    // test, which is why the nav rule never fired on the most common markup.
+    var isNav = g.tagName === "NAV";
+    var navLinks = isNav ? g.querySelectorAll('a[href],[role=link]').length : null;
+    if (kids < 2 && !isNav) continue;
     report.groups.push({
       tag: g.tagName.toLowerCase(), display: gcs.display, children: kids, navLinks: navLinks
     });

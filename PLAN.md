@@ -34,7 +34,7 @@ Repeatable: same flow every time, any brand kit, any asset type. The human appro
 - `engine/brief/brief-template.md`: the Stage 1 artifact.
 - `engine/loop/run_state.py`: fail-loud state machine. Subcommands: `init`, `gate`, `override`, `references` (the counted vision-reference writer), `vendored` (library-install provenance), `pick` (the ONLY way to resolve `human_pick`), `brief-ok`, `resting-ok`, `ship-check`, `done`, `cancel`.
 - `engine/floor/drawing_check.py`: the provenance-first anti-hand-drawing scanner (tiered 0/2/3, plus 4 usage-error and 5 degraded). Re-run independently by the Stop hook, `ship-check` and `done`.
-- `engine/test/run-selftests.sh`: the regression suite (85 cases). Mutation-checked: reverting a fix must turn its test red.
+- `engine/test/run-selftests.sh`: the regression suite (114 cases). Mutation-checked: reverting a fix must turn its test red.
 - `engine/floor/UX-LAWS.md`: which UX laws are enforced as gates, which are human judgment, and which were rejected with reasons.
 - `engine/floor/render.mjs` + `extract.js` + `floor_check.py`: headless mobile-first render (390 then 1440), deterministic checks (contrast incl. alpha compositing, heading orphans, layout overflow, console errors; warn-only em-dash pileup note).
 - `hooks/design-gate.sh`: global Stop hook; no-ops without a `design-run.json`, otherwise blocks turn-end until the floor passes, an override is logged, or the run is cancelled.

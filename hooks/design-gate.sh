@@ -39,7 +39,13 @@ fi
 if [ -f "$DCHECK" ]; then
   # `|| DRC=$?` keeps the non-zero scan exit from tripping `set -e` before we branch on it.
   DRC=0
-  python3 "$DCHECK" --git-diff --root . --run-file "$RUN_FILE" >$OUT_DIR/drawing.out 2>&1 || DRC=$?
+  # Timeout via python (macOS ships no `timeout`). A wedged scanner must not hang every turn-end.
+  python3 -c 'import subprocess,sys
+try:
+    sys.exit(subprocess.run(sys.argv[1:], timeout=120).returncode)
+except subprocess.TimeoutExpired:
+    print("drawing_check timed out after 120s", file=sys.stderr); sys.exit(6)' \
+    python3 "$DCHECK" --git-diff --root . --run-file "$RUN_FILE" >$OUT_DIR/drawing.out 2>&1 || DRC=$?
   if [ "$DRC" = "3" ]; then
     echo "design-gate: HAND-DRAWING detected — canvas 2D drawing in authored source. This is NOT overridable." >&2
     cat $OUT_DIR/drawing.out >&2
@@ -75,9 +81,11 @@ PY
     cat $OUT_DIR/drawing.out >&2
     exit 2
   elif [ "$DRC" != "0" ]; then
-    # Unexpected failure (missing dep, crash). Warn loudly; ship-check/done fail closed on this.
-    echo "design-gate: WARNING — drawing_check did not run cleanly (exit $DRC); the drawing backstop did NOT cover this turn." >&2
+    # Unexpected failure (crash, timeout). FAIL CLOSED like ship-check/done do: an unverified
+    # build is not a clean build. Escape hatch is `run_state.py cancel`.
+    echo "design-gate: drawing_check did not run cleanly (exit $DRC); the anti-drawing scan did NOT cover this turn. Not treating it as clean." >&2
     cat $OUT_DIR/drawing.out >&2
+    exit 2
   fi
 fi
 

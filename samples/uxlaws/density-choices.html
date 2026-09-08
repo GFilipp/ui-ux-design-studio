@@ -1,0 +1,29 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>ux: density + choices</title></head>
+<body style="background:#fff;color:#111;font-family:system-ui;margin:0;padding:16px;font-size:16px;line-height:1.5">
+<!--
+WARN-only fixture. Must exit 0 while `density` warns (one 130+ word block) and `choices` warns
+twice: a 12-child flex row (Miller) and a <nav><ul> with 9 links (Hick). The nav links are
+display:block and 44px tall so `targets` stays clean and the warns are isolated.
+-->
+<nav aria-label="primary" style="margin-bottom:16px">
+  <ul style="list-style:none;padding:0;margin:0">
+    <li><a href="#" style="display:block;min-height:44px;line-height:44px">Product</a></li>
+    <li><a href="#" style="display:block;min-height:44px;line-height:44px">Solutions</a></li>
+    <li><a href="#" style="display:block;min-height:44px;line-height:44px">Pricing</a></li>
+    <li><a href="#" style="display:block;min-height:44px;line-height:44px">Customers</a></li>
+    <li><a href="#" style="display:block;min-height:44px;line-height:44px">Resources</a></li>
+    <li><a href="#" style="display:block;min-height:44px;line-height:44px">Company</a></li>
+    <li><a href="#" style="display:block;min-height:44px;line-height:44px">Careers</a></li>
+    <li><a href="#" style="display:block;min-height:44px;line-height:44px">Blog</a></li>
+    <li><a href="#" style="display:block;min-height:44px;line-height:44px">Contact</a></li>
+  </ul>
+</nav>
+<div style="display:flex;flex-wrap:wrap;gap:8px">
+  <span style="padding:4px 8px;background:#eee">A</span><span style="padding:4px 8px;background:#eee">B</span><span style="padding:4px 8px;background:#eee">C</span>
+  <span style="padding:4px 8px;background:#eee">D</span><span style="padding:4px 8px;background:#eee">E</span><span style="padding:4px 8px;background:#eee">F</span>
+  <span style="padding:4px 8px;background:#eee">G</span><span style="padding:4px 8px;background:#eee">H</span><span style="padding:4px 8px;background:#eee">I</span>
+  <span style="padding:4px 8px;background:#eee">J</span><span style="padding:4px 8px;background:#eee">K</span><span style="padding:4px 8px;background:#eee">L</span>
+</div>
+<p style="max-width:60ch;margin-top:16px">Teams adopt the platform because it shortens the distance between a plan and a shipped result. Instead of assembling a dozen tools and hoping they agree, one workspace holds the brief, the build, and the review. Every change is checked against the same floor, so the argument about whether something is good enough happens once, early, with evidence, rather than repeatedly at the end. Leaders see progress as it happens and stop asking for status. Operators spend their hours on the work rather than on reconciling documents. Over a quarter that adds up to whole weeks recovered, and the recovered time compounds because each shipped result raises the bar for the next one. The point is not the tooling. The point is fewer decisions made blind, fewer late surprises, and a cadence the whole team can actually keep, month after month, without heroics or a growing pile of exceptions.</p>
+</body></html>

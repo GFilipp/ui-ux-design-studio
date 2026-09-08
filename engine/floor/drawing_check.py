@@ -269,6 +269,11 @@ def decode_datauri(rest):
 def strip_comments(text):
     # Comments are not code. A doc comment mentioning getContext("2d") beside an unrelated
     # Array.fill() produced a soft block on a file that draws nothing.
+    # An UNCLOSED /* makes the lazy regex quadratic (60s at 1.2MB). Cut at the first unclosed
+    # opener first, then the remaining block comments are all closed and the scan is linear.
+    first = text.find("/*")
+    if first >= 0 and "*/" not in text[first:]:
+        text = text[:first]
     text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
     return re.sub(r"(?m)//[^\n]*", " ", text)
 
@@ -323,6 +328,25 @@ def find_canvas2d_draw(text):
     return None
 
 
+def iter_svg_blocks(text):
+    # Linear replacement for `<svg\b[^>]*>.*?</svg>`: with thousands of self-closing `<svg .../>`
+    # openers and one closer the lazy regex went quadratic (275s at 2.4MB). str.find does not.
+    low, i = text.lower(), 0
+    while True:
+        s = low.find("<svg", i)
+        if s < 0:
+            return
+        nxt = low[s + 4:s + 5]
+        if nxt and nxt not in " \t\r\n/>":
+            i = s + 4
+            continue
+        e = low.find("</svg>", s)
+        if e < 0:
+            return
+        yield s, text[s:e + 6]
+        i = e + 6
+
+
 def scan_text(rel, text):
     findings = []
 
@@ -351,8 +375,7 @@ def scan_text(rel, text):
 
     # 3) Inline <svg> blocks (or whole-file for .svg).
     is_svg_file = rel.lower().endswith(".svg")
-    blocks = [(0, text)] if is_svg_file else [(m.start(), m.group(0))
-                                              for m in re.finditer(r"<svg\b[^>]{0,2000}>.*?</svg>", text, re.S | re.I)]
+    blocks = [(0, text)] if is_svg_file else list(iter_svg_blocks(text))
     for start, block in blocks:
         shapes, total_d, max_d, vw, vh, d_expr = analyze_svg_block(block)
         sev, kind = classify_svg(shapes, total_d, max_d, vw, vh, d_expr)

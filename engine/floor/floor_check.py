@@ -4,10 +4,18 @@
 Reads an extraction JSON produced by engine/floor/extract.js (run in the rendered
 page) and evaluates objective gates only:
 
+  BLOCKING
   - contrast : WCAG 2.1 AA ratio per text node vs its effective background
   - orphans  : a heading/text block whose last visual line is a single word
   - layout   : horizontal overflow / off-screen elements (broken layout)
-  - assets   : visible <img> slots that are empty or failed to load
+  - assets   : visible <img> slots that are empty or failed to load (with --require-assets)
+  - console  : uncaught JS errors / console.error captured by render.mjs
+  - targets  : Fitts's law, tap targets under 44px on TOUCH breakpoints (24px warns on pointer)
+  - type_size: body copy under 12px on touch
+  - measure  : characters per line past ~130 (warns past 100)
+  WARN-ONLY (surfaced for the human pick, never block)
+  - style (em-dash pileup), density (a 120+ word block), choices (Hick/Miller choice load),
+    drawing (runtime graphics census; drawing_check.py owns the blocking source-level gate)
 
 These are OBJECTIVE. The machine owns this floor. Taste ("is it world-class?")
 is never scored here; that is the human's call. Exits 2 if any blocking gate fails
@@ -182,7 +190,9 @@ def check_type_size(nodes, touch):
         return [], []
     blocking, warn = [], []
     for n in nodes:
-        if not n.get("ownsDirectText", True) or n.get("totalWords", 0) < 3:
+        # Single glyphs (icon fonts, "×") are exempt; 2-word labels are NOT — prices, CTA labels
+        # and legal microcopy are exactly where 9px type gets set, and they were slipping through.
+        if not n.get("ownsDirectText", True) or n.get("totalWords", 0) < 2:
             continue
         fs = n.get("fontSize") or 0
         if fs and fs < TYPE_MIN_BLOCK:
@@ -205,7 +215,8 @@ def check_measure(nodes):
             continue  # display type is set to a different measure on purpose
         cpl = chars / float(lines)
         if cpl >= MEASURE_MAX_BLOCK:
-            blocking.append({"text": n.get("text"), "cpl": round(cpl), "need": MEASURE_MAX_WARN})
+            blocking.append({"text": n.get("text"), "cpl": round(cpl),
+                             "need": MEASURE_MAX_WARN, "block_at": MEASURE_MAX_BLOCK})
         elif cpl >= MEASURE_MAX_WARN:
             warn.append({"text": n.get("text"), "cpl": round(cpl)})
     return blocking, warn
@@ -257,7 +268,7 @@ def evaluate(data, require_assets=False, allow_indeterminate=False, breakpoint=N
     console_fail = console_errors is not None and console_errors > 0
     blocking = bool(contrast_status in ("fail", "review") or orphans or layout
                     or (require_assets and broken) or console_fail
-                    or small_targets or type_block or measure_block)
+                    or (touch and small_targets) or type_block or measure_block)
     return {
         "passed": not blocking,
         "gates": {
@@ -276,7 +287,8 @@ def evaluate(data, require_assets=False, allow_indeterminate=False, breakpoint=N
                       "note": ("em-dash pileup (%d); rare is fine, this reads as the AI default connector" % em_dashes)
                               if em_dashes >= 3 else None},
             # Fitts's law — BLOCKING on touch breakpoints.
-            "targets": {"status": "fail" if small_targets else "pass",
+            "targets": {"status": ("fail" if (touch and small_targets)
+                                   else ("warn" if small_targets else "pass")),
                         "minimum": tap_min, "touch": touch, "small": small_targets},
             # readability floor — BLOCKING under 12px, warn to 15px (touch only)
             "type_size": {"status": "fail" if type_block else ("warn" if type_warn else "pass"),
@@ -313,7 +325,12 @@ def evaluate(data, require_assets=False, allow_indeterminate=False, breakpoint=N
 def main():
     ap = argparse.ArgumentParser(description="Deterministic floor checks.")
     ap.add_argument("extract_json", help="path to extract.js output JSON")
-    ap.add_argument("--breakpoint", default="desktop")
+    # default None: infer touch/pointer from the extract's OWN viewport width. Defaulting to
+    # "desktop" made the string always truthy, so a 390px extract run without the flag skipped
+    # type_size entirely and used the 24px pointer floor for Fitts — the two headline gates,
+    # silently off, in exactly the way the pod docs told the pod to run it.
+    ap.add_argument("--breakpoint", default=None, choices=["mobile", "desktop"],
+                    help="omit to infer from the extract's viewport width (<768 = mobile/touch)")
     ap.add_argument("--require-assets", action="store_true",
                     help="fail if any visible img slot is empty/broken")
     ap.add_argument("--allow-indeterminate", action="store_true",
@@ -324,7 +341,7 @@ def main():
         data = json.load(f)
     result = evaluate(data, require_assets=a.require_assets,
                       allow_indeterminate=a.allow_indeterminate, breakpoint=a.breakpoint)
-    result["breakpoint"] = a.breakpoint
+    result["breakpoint"] = a.breakpoint or ("mobile" if result["gates"]["targets"]["touch"] else "desktop")
     out = json.dumps(result, indent=2)
     if a.out:
         with open(a.out, "w") as f:

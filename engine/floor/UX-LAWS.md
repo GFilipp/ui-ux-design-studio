@@ -3,13 +3,13 @@
 Decided 2026-09-08. The point of writing this down is so a future scan or a screenshot of
 "20 UX laws to tell Claude" does not re-add things we already judged out of scope.
 
-## Enforced as objective gates (`engine/floor/floor_check.py`)
+## Encoded as objective checks (`engine/floor/floor_check.py`) — BLOCKING rows block the floor; WARN rows never do
 | Law | Gate | Behaviour |
 |---|---|---|
-| **Fitts's law** (target size/distance) | `targets` | BLOCKS: min 44px on touch breakpoints; 24px warn on pointer. Inline prose links are exempt — they are text, not standalone hit areas. |
+| **Fitts's law** (target size/distance) | `targets` | BLOCKS under 44px on touch breakpoints; WARNS under 24px on pointer. A link is exempt only when it sits inside prose (its parent carries its own text); bare nav links are hit areas and are checked. |
 | readability floor | `type_size` | BLOCKS under 12px body on touch; warns to 15px. |
-| **Miller's law** (measure half) | `measure` | BLOCKS over ~130 characters per line; warns over 100. Comfortable body measure is 45-75. |
-| RULES 5, density half | `density` | WARNS on any single text block over 120 words. |
+| typographic **measure** (this is NOT Miller's law; it is line-length craft, Bringhurst 45-75 cpl) | `measure` | BLOCKS at 130+ characters per line; warns at 100+. |
+| RULES 5, density half | `density` | WARNS on any single text block of 120+ words. |
 | **Hick's law** + **Miller's law** (choice load) | `choices` | WARNS on a sibling set of 10+, or primary nav over 7 links. Warn-only on purpose: a 12-logo wall can be correct. |
 
 Note "minimize target distance" from the popular list is not a separate law; it is the

@@ -13,7 +13,7 @@ The machine owns this floor; the human owns the taste call (pick from candidates
 2. **Check, MOBILE FIRST**:
    `python3 engine/floor/floor_check.py <outDir>/extract-mobile.json --breakpoint mobile [--require-assets]`
    then the same for `extract-desktop.json`. Exit 2 = floor failed; a mobile failure fails the build.
-3. **Fix** the flagged issues (contrast, orphan, layout, broken assets) and loop. Cap at K=3
+3. **Fix** the flagged issues (contrast, orphan, layout, assets, console errors, tap targets, type size, measure) and loop. Cap at K=3
    auto-fix rounds; if still failing, halt and ask (never ship a degraded default).
 4. **Record** each gate with `engine/loop/run_state.py gate ...`. Contrast `indeterminate`
    (text over a background image) is not auto-pass; surface it for explicit review.

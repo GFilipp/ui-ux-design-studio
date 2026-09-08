@@ -17,7 +17,14 @@ DC="engine/floor/drawing_check.py"
 FC="engine/floor/floor_check.py"
 KIT="brand-kits/example-rocketminds/brand-kit.json"
 TMP="$(mktemp -d)"
+[ -n "$TMP" ] || { echo "FATAL: mktemp failed"; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
+export PYTHONDONTWRITEBYTECODE=1
+# ~25 cases render through Playwright. Fail LOUDLY up front rather than letting the case count
+# silently drift from 85 to 80 on a machine without it.
+node -e "require('playwright')" 2>/dev/null || { echo "FATAL: playwright not resolvable from $ROOT; the render-backed cases cannot run. npm install first."; exit 1; }
+# Commits inside test repos must not depend on this machine's git config (signing, hooks).
+gcommit() { git -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --no-verify -m "$1" || { echo "FATAL: test git commit failed in $(pwd)"; exit 1; }; }
 
 pass=0; fail=0
 chk() { # chk <label> <got> <want>
@@ -29,7 +36,7 @@ rs() { python3 "$RS" "$@" >/dev/null 2>&1; echo $?; }
 
 # A fresh run dir with 3 real reference FILES and every gate passed.
 newrun() { # newrun <dir>
-  local d="$1"; mkdir -p "$d/refs"
+  local d="$1" g i; mkdir -p "$d/refs"
   for i in 1 2 3; do printf 'PNGDATA' > "$d/refs/r$i.png"; done
   python3 "$RS" init --file "$d/design-run.json" --project t --surface web --brand-kit "$KIT" >/dev/null 2>&1
   python3 "$RS" references --file "$d/design-run.json" --add refs/r1.png refs/r2.png refs/r3.png >/dev/null 2>&1
@@ -37,6 +44,9 @@ newrun() { # newrun <dir>
     python3 "$RS" gate --file "$d/design-run.json" --name "$g" --status pass >/dev/null 2>&1
   done
   python3 "$RS" pick --file "$d/design-run.json" --candidate A >/dev/null 2>&1
+  # POST-CONDITION: a run that is not shippable here makes every downstream "blocks" assertion
+  # pass for the wrong reason (unresolved gates), so abort the suite instead.
+  python3 "$RS" ship-check --file "$d/design-run.json" >/dev/null 2>&1 || { echo "FATAL: newrun did not produce a shippable run in $d"; python3 "$RS" ship-check --file "$d/design-run.json"; exit 1; }
 }
 refcount() { # refcount <runfile> <json-array-of-refs> -> counted value
   python3 - "$1" "$2" <<'PY'
@@ -71,6 +81,7 @@ chk "A1 vendored --add '..' rejected" "$(rs vendored --file "$V/design-run.json"
 chk "A1 vendored nonexistent rejected" "$(rs vendored --file "$V/design-run.json" --add nope/zzz)" 3
 chk "A1 canvas still hard after attempts" "$(dc "$V/hero.tsx" --root "$V" --run-file "$V/design-run.json")" 3
 chk "A1 legit vendored path accepted" "$(mkdir -p "$V/components/ui" && printf 'x' > "$V/components/ui/x.tsx" && rs vendored --file "$V/design-run.json" --add components/ui)" 0
+chk "A1 ...and actually RECORDED"       "$(python3 -c "import json;print(json.load(open('$V/design-run.json'))['vendored'])")" "['components/ui']"
 
 # A2: exclusion must be relative to root, not the absolute path.
 B="$TMP/build/site"; mkdir -p "$B/app"; cp samples/drawing/authored_canvas.tsx "$B/app/hero.tsx"
@@ -111,7 +122,7 @@ chk "A5 ship-check blocks on canvas"  "$(cd "$S" && python3 "$ROOT/$RS" ship-che
 # ITSELF — the old A6 called a helper that production never calls, so it stayed green even if
 # cmd_done's check was deleted.
 U6="$TMP/a6"; newrun "$U6"
-chk "A6 done refuses an unverifiable scan" "$(cd "$U6" && python3 - <<'PYEOF' 2>&1 | tail -1
+(cd "$U6" && python3 - <<'PYEOF' >"$U6/a6.out" 2>&1
 import importlib.util, os
 spec = importlib.util.spec_from_file_location("rs", os.environ["RSPATH"])
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
@@ -122,7 +133,10 @@ try:
 except SystemExit as e:
     print("exit:%s" % e.code)
 PYEOF
-)" "exit:3"
+)
+chk "A6 done refuses an unverifiable scan"       "$(tail -1 "$U6/a6.out")" "exit:3"
+chk "A6 ...for the RIGHT reason (message)"       "$(grep -c 'could not verify the build is free of hand-drawn canvas' "$U6/a6.out")" 1
+chk "A6 ...and the run file survives"            "$([ -f "$U6/design-run.json" ] && echo kept || echo deleted)" "kept"
 
 # A7: human_pick is the one gate with no override path.
 H="$TMP/a7"; newrun "$H"
@@ -157,20 +171,43 @@ chk "R3 gate --name human_pick refused"       "$(rs gate --file "$HP/design-run.
 chk "R3 pick records the candidate"           "$(python3 "$RS" pick --file "$HP/design-run.json" --candidate C 2>&1 | grep -c 'candidate: C')" 1
 chk "R3 candidate persisted in the run file"  "$(python3 -c "import json;print(json.load(open('$HP/design-run.json')).get('picked_candidate'))")" "C"
 
-# degraded baseline must not read as clean
-DG="$TMP/dg"; mkdir -p "$DG/app"
-( cd "$DG" && git init -q && git config user.email t@t && git config user.name t )
-cp samples/drawing/authored_canvas.tsx "$DG/app/legacy.tsx"
-( cd "$DG" && git add -A >/dev/null 2>&1 && git commit -qm legacy )
-chk "R4 committed canvas + no baseline != clean" "$(dc --git-diff --root "$DG")" 5
-
 # cancel and brief-ok were untested entirely
 CB="$TMP/cb"; newrun "$CB"
+chk "R5 run file exists before cancel"        "$([ -f "$CB/design-run.json" ] && echo present || echo missing)" "present"
 python3 "$RS" cancel --file "$CB/design-run.json" >/dev/null 2>&1
 chk "R5 cancel removes the run file"          "$([ -f "$CB/design-run.json" ] && echo present || echo gone)" "gone"
 CB2="$TMP/cb2"; mkdir -p "$CB2"
 python3 "$RS" init --file "$CB2/design-run.json" --project cb2 --surface web --brand-kit "$KIT" >/dev/null 2>&1
 chk "R5 brief-ok blocks before the brief"     "$(rs brief-ok --file "$CB2/design-run.json")" 3
+
+echo "=== 3c. AUDIT round 3: GATES livelock + membership ==="
+# A run file created BEFORE the 4 new gates existed must still be resolvable. It was not: gate/
+# override validated against the FILE's keys, so "gate --name targets" said "unknown gate" and the
+# Stop hook blocked turn-end forever.
+LG="$TMP/legacy"; mkdir -p "$LG/refs"; for i in 1 2 3; do printf 'PNGDATA' > "$LG/refs/r$i.png"; done
+python3 - "$LG/design-run.json" <<'PYEOF'
+import json,sys
+old=["brand_kit","brief","references","assets","no_drawing","contrast","orphans","layout","responsive"]
+g={k:{"status":"pass","detail":None,"override_reason":None} for k in old}
+g["human_pick"]={"status":"halted","detail":None,"override_reason":None}
+json.dump({"project":"legacy","surface":"web","brand_kit":"x","references":["refs/r1.png","refs/r2.png","refs/r3.png"],
+           "vendored":[],"base_sha":None,"gates":g},open(sys.argv[1],"w"))
+PYEOF
+chk "L1 legacy file: new gate is settable (was 'unknown gate')" "$(rs gate --file "$LG/design-run.json" --name targets --status pass)" 0
+for g in console type_size measure; do python3 "$RS" gate --file "$LG/design-run.json" --name $g --status pass >/dev/null 2>&1; done
+chk "L1 legacy file parks at human_pick (resting-ok)"          "$(rs resting-ok --file "$LG/design-run.json")" 0
+python3 "$RS" pick --file "$LG/design-run.json" --candidate A >/dev/null 2>&1
+chk "L1 legacy file ships once resolved"                       "$(cd "$LG" && python3 "$ROOT/$RS" ship-check --file design-run.json >/dev/null 2>&1; echo $?)" 0
+# Every gate added today must actually BLOCK ship when halted. Removing one from GATES must go red.
+for gname in console targets type_size measure; do
+  GX="$TMP/gate_$gname"; newrun "$GX"
+  python3 - "$GX/design-run.json" "$gname" <<'PYEOF'
+import json,sys
+s=json.load(open(sys.argv[1])); s["gates"][sys.argv[2]]={"status":"halted","detail":None,"override_reason":None}
+json.dump(s,open(sys.argv[1],"w"))
+PYEOF
+  chk "L2 $gname is a real ship gate" "$(cd "$GX" && python3 "$ROOT/$RS" ship-check --file design-run.json 2>&1 | grep -c "unresolved gates: .*$gname")" 1
+done
 
 echo "=== 4. AUDIT B: false positives that wedge runs ==="
 # B9: canvas primitive must be called on the getContext identifier.
@@ -230,7 +267,7 @@ chk "B9 drawing via alias blocks"            "$(dc "$N/alias.tsx" --root "$N")" 
 G="$TMP/b10"; mkdir -p "$G/app"
 ( cd "$G" && git init -q && git config user.email t@t && git config user.name t )
 cp samples/drawing/authored_canvas.tsx "$G/app/legacy.tsx"
-( cd "$G" && git add -A >/dev/null 2>&1 && git commit -qm legacy )
+( cd "$G" && git add -A >/dev/null 2>&1 && gcommit legacy )
 chk "B10 no baseline = cannot verify, not clean" "$(dc --git-diff --root "$G")" 5
 cp samples/drawing/authored_canvas.tsx "$G/app/new.tsx"
 chk "B10 newly added file IS scanned"         "$(dc --git-diff --root "$G")" 3
@@ -241,7 +278,7 @@ M="$TMP/b11"; mkdir -p "$M/pkg-a/app" "$M/pkg-b/app"
 cp samples/drawing/authored_canvas.tsx "$M/pkg-a/app/hero.tsx"
 # Commit and pass an explicit --base so this isolates root-bounding from the degraded-baseline
 # path (no baseline is now exit 5, which would otherwise mask the result).
-( cd "$M" && git add -A >/dev/null 2>&1 && git commit -qm init )
+( cd "$M" && git add -A >/dev/null 2>&1 && gcommit init )
 chk "B11 --root excludes a sibling package"   "$(dc --git-diff --base HEAD --root "$M/pkg-b")" 0
 cp samples/drawing/authored_canvas.tsx "$M/pkg-b/app/own.tsx"
 chk "B11 control: own package IS scanned"     "$(dc --git-diff --base HEAD --root "$M/pkg-b")" 3
@@ -279,8 +316,14 @@ chk "hook allows a clean resolved run" "$(cd "$K" && bash "$ROOT/hooks/design-ga
 python3 "$RS" gate --file "$K/design-run.json" --name contrast --status fail >/dev/null 2>&1
 chk "hook blocks mid-loop"             "$(cd "$K" && bash "$ROOT/hooks/design-gate.sh" >/dev/null 2>&1; echo $?)" 2
 K2="$TMP/hook2"; newrun "$K2"
-python3 "$RS" gate --file "$K2/design-run.json" --name human_pick --status fail >/dev/null 2>&1
-chk "hook allows human_pick resting"   "$(cd "$K2" && bash "$ROOT/hooks/design-gate.sh" >/dev/null 2>&1; echo $?)" 0
+# `gate --name human_pick --status fail` is REFUSED now, so the old version of this case left
+# human_pick=pass and exited 0 through ship-check success — resting-ok was never executed.
+python3 - "$K2/design-run.json" <<'PYEOF'
+import json,sys
+s=json.load(open(sys.argv[1])); s["gates"]["human_pick"]={"status":"halted","detail":None,"override_reason":None}
+json.dump(s,open(sys.argv[1],"w"))
+PYEOF
+chk "hook allows human_pick resting (resting-ok path)" "$(cd "$K2" && bash "$ROOT/hooks/design-gate.sh" 2>&1 | grep -c 'parked at human_pick')" 1
 K3="$TMP/hook3"; newrun "$K3"; cp samples/drawing/authored_canvas.tsx "$K3/hero.tsx"
 python3 "$RS" override --file "$K3/design-run.json" --gate no_drawing --reason "trying to waive canvas" >/dev/null 2>&1
 chk "hook blocks canvas despite override" "$(cd "$K3" && bash "$ROOT/hooks/design-gate.sh" 2>&1 | grep -c 'HAND-DRAWING detected')" 1
@@ -306,6 +349,8 @@ PY
   python3 "$FC" "$TMP/ctr/extract-mobile.json" --breakpoint mobile --out "$TMP/ctr/r.json" >/dev/null 2>&1
   chk "inline-child color: no false contrast fail" "$(python3 -c "import json;print(json.load(open('$TMP/ctr/r.json'))['gates']['contrast']['status'])")" "pass"
   chk "inline-child color: zero failures listed"   "$(python3 -c "import json;print(len(json.load(open('$TMP/ctr/r.json'))['gates']['contrast']['failures']))")" 0
+  chk "inline-child: h1 does NOT own the text"     "$(python3 -c "import json;print(sum(1 for n in json.load(open('$TMP/ctr/extract-mobile.json'))['textNodes'] if n['tag']=='h1' and not n['ownsDirectText']))")" 1
+  chk "inline-child: the span IS judged"           "$(python3 -c "import json;print(sum(1 for n in json.load(open('$TMP/ctr/extract-mobile.json'))['textNodes'] if n['tag']=='span' and n['ownsDirectText']))")" 1
   chk "contrast does NOT false-fail on it"         "$(python3 -c "import json;print(json.load(open('$TMP/orphan/r.json'))['gates']['contrast']['status'])")" "pass"
 else
   chk "orphan render (playwright available?)" "render-failed" "ok"
@@ -314,22 +359,47 @@ fi
 
 echo "=== 9. UX-law gates (Fitts / type size / measure / choice load) ==="
 node engine/floor/render.mjs "$ROOT/samples/uxlaws/small-targets.html" "$TMP/tap" >/dev/null 2>&1
-python3 "$FC" "$TMP/tap/extract-mobile.json" --breakpoint mobile --out "$TMP/tap/m.json" >/dev/null 2>&1
-python3 "$FC" "$TMP/tap/extract-desktop.json" --breakpoint desktop --out "$TMP/tap/d.json" >/dev/null 2>&1
+python3 "$FC" "$TMP/tap/extract-mobile.json"  --breakpoint mobile  --out "$TMP/tap/m.json"  >/dev/null 2>&1; TAPM=$?
+python3 "$FC" "$TMP/tap/extract-desktop.json" --breakpoint desktop --out "$TMP/tap/d.json"  >/dev/null 2>&1; TAPD=$?
+python3 "$FC" "$TMP/tap/extract-mobile.json"                       --out "$TMP/tap/m0.json" >/dev/null 2>&1
 gate() { python3 -c "import json;print(json.load(open('$1'))['gates']['$2']['status'])"; }
-cnt() { python3 -c "import json;print(len(json.load(open('$1'))['gates']['$2']['$3']))"; }
-chk "Fitts: small taps BLOCK on mobile"        "$(gate "$TMP/tap/m.json" targets)" "fail"
-chk "Fitts: flags exactly the 2 small controls" "$(cnt "$TMP/tap/m.json" targets small)" 2
-chk "Fitts: inline prose link NOT flagged"     "$(python3 -c "import json;print(sum(1 for s in json.load(open('$TMP/tap/m.json'))['gates']['targets']['small'] if 'comparison' in (s.get('label') or '')))")" 0
-chk "Fitts: 24px pointer floor on desktop"     "$(python3 -c "import json;print(json.load(open('$TMP/tap/d.json'))['gates']['targets']['minimum'])")" 24
+cnt()  { python3 -c "import json;print(len(json.load(open('$1'))['gates']['$2']['$3']))"; }
+# BLOCK means exit 2, not a status string: deleting the gates from `blocking` used to turn zero tests red.
+chk "Fitts: mobile run BLOCKS (exit 2)"          "$TAPM" 2
+chk "Fitts: mobile status fail"                  "$(gate "$TMP/tap/m.json" targets)" "fail"
+chk "Fitts: 8 small controls at 44px"            "$(cnt "$TMP/tap/m.json" targets small)" 8
+chk "Fitts: desktop is WARN, not block"          "$(gate "$TMP/tap/d.json" targets)" "warn"
+chk "Fitts: desktop run does NOT block (exit 0)" "$TAPD" 0
+chk "Fitts: 6 small controls at 24px"            "$(cnt "$TMP/tap/d.json" targets small)" 6
+chk "Fitts: exact-44 boundary button not small"  "$(python3 -c "import json;print(sum(1 for c in json.load(open('$TMP/tap/m.json'))['gates']['targets']['small'] if c['label']=='ok'))")" 0
+chk "Fitts: only the prose link is exempt"       "$(python3 -c "import json;print(sum(1 for c in json.load(open('$TMP/tap/extract-mobile.json'))['controls'] if c['inlineInProse']))")" 1
+chk "Fitts: non-flex nav links ARE checked"      "$(python3 -c "import json;print(sum(1 for c in json.load(open('$TMP/tap/m.json'))['gates']['targets']['small'] if c['label'] in ('Pricing','Docs')))")" 2
+chk "Fitts: input/select/role=button captured"   "$(python3 -c "import json;print(sorted(set(c['tag'] for c in json.load(open('$TMP/tap/extract-mobile.json'))['controls'])))")" "['a', 'button', 'div', 'input', 'select']"
+# --breakpoint omitted: the 390px viewport must infer TOUCH (it used to silently default to desktop).
+chk "no --breakpoint: 390px infers touch (min 44)" "$(python3 -c "import json;print(json.load(open('$TMP/tap/m0.json'))['gates']['targets']['minimum'])")" 44
+chk "no --breakpoint: recorded as mobile"        "$(python3 -c "import json;print(json.load(open('$TMP/tap/m0.json'))['breakpoint'])")" "mobile"
 node engine/floor/render.mjs "$ROOT/samples/uxlaws/wide-measure.html" "$TMP/wm" >/dev/null 2>&1
-python3 "$FC" "$TMP/wm/extract-mobile.json" --breakpoint mobile --out "$TMP/wm/m.json" >/dev/null 2>&1
-chk "type_size: 9px body BLOCKS on mobile"     "$(gate "$TMP/wm/m.json" type_size)" "fail"
-chk "measure: 130+ CPL BLOCKS"                 "$(gate "$TMP/wm/m.json" measure)" "fail"
-chk "the reference sample still clears it all" "$(node engine/floor/render.mjs "$ROOT/samples/good.html" "$TMP/gd" >/dev/null 2>&1; python3 "$FC" "$TMP/gd/extract-mobile.json" --breakpoint mobile >/dev/null 2>&1; echo $?)" 0
-chk "controls are captured at all (was zero)"  "$(python3 -c "import json;print(1 if len(json.load(open('$TMP/gd/extract-mobile.json'))['controls'])>0 else 0)")" 1
-chk "groups are captured at all (was zero)"    "$(python3 -c "import json;print(1 if len(json.load(open('$TMP/gd/extract-mobile.json'))['groups'])>0 else 0)")" 1
-chk "legacy fixtures without controls still 0" "$(python3 "$FC" samples/_selftest_good.json >/dev/null 2>&1; echo $?)" 0
+python3 "$FC" "$TMP/wm/extract-mobile.json" --breakpoint mobile --out "$TMP/wm/m.json" >/dev/null 2>&1; WMM=$?
+chk "type/measure: mobile run BLOCKS (exit 2)"   "$WMM" 2
+chk "type_size: 9px body fails"                  "$(gate "$TMP/wm/m.json" type_size)" "fail"
+chk "measure: 130+ CPL fails"                    "$(gate "$TMP/wm/m.json" measure)" "fail"
+# WARN-only gates: must fire AND must not block.
+node engine/floor/render.mjs "$ROOT/samples/uxlaws/density-choices.html" "$TMP/dcx" >/dev/null 2>&1
+python3 "$FC" "$TMP/dcx/extract-mobile.json" --breakpoint mobile --out "$TMP/dcx/m.json" >/dev/null 2>&1; DCXM=$?
+chk "density+choices fixture still exits 0"      "$DCXM" 0
+chk "density: 130-word block warns"              "$(gate "$TMP/dcx/m.json" density)" "warn"
+chk "choices: warns"                             "$(gate "$TMP/dcx/m.json" choices)" "warn"
+chk "choices: 12-child row + 9-link nav = 2"     "$(cnt "$TMP/dcx/m.json" choices oversized)" 2
+chk "choices: the <nav><ul> shape is counted"    "$(python3 -c "import json;print(sum(1 for o in json.load(open('$TMP/dcx/m.json'))['gates']['choices']['oversized'] if o['kind']=='nav'))")" 1
+# Reference samples: both brand kits clear the whole floor at both breakpoints.
+for pg in good good-kit2; do
+  node engine/floor/render.mjs "$ROOT/samples/$pg.html" "$TMP/ref-$pg" >/dev/null 2>&1
+  chk "$pg clears the floor on mobile"  "$(python3 "$FC" "$TMP/ref-$pg/extract-mobile.json"  --breakpoint mobile  >/dev/null 2>&1; echo $?)" 0
+  chk "$pg clears the floor on desktop" "$(python3 "$FC" "$TMP/ref-$pg/extract-desktop.json" --breakpoint desktop >/dev/null 2>&1; echo $?)" 0
+done
+chk "controls are captured (was zero)"           "$(python3 -c "import json;print(1 if len(json.load(open('$TMP/ref-good/extract-mobile.json'))['controls'])>0 else 0)")" 1
+chk "groups are captured (was zero)"             "$(python3 -c "import json;print(1 if len(json.load(open('$TMP/ref-good/extract-mobile.json'))['groups'])>0 else 0)")" 1
+chk "legacy fixtures without controls still 0"   "$(python3 "$FC" samples/_selftest_good.json >/dev/null 2>&1; echo $?)" 0
 
 echo
 echo "================ $pass passed, $fail failed ================"

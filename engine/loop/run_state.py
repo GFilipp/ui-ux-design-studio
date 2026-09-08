@@ -195,7 +195,18 @@ def unresolved_gates(state):
 
 def load(path):
     with open(path) as f:
-        return json.load(f)
+        state = json.load(f)
+    # Backfill gates added AFTER this run file was created. Without this a legacy file could never
+    # be resolved: `gate`/`override` validated names against the FILE's keys while unresolved_gates
+    # iterates the code's GATES, so "gate --name targets" said "unknown gate" and the Stop hook
+    # blocked turn-end with remediation that could not work (2026-09-08 round-3 audit).
+    if isinstance(state, dict):
+        g = state.get("gates")
+        if not isinstance(g, dict):
+            g = state["gates"] = {}
+        for k in GATES:
+            g.setdefault(k, {"status": "halted", "detail": None, "override_reason": None})
+    return state
 
 
 def save(path, state):
@@ -228,7 +239,7 @@ def cmd_init(a):
 
 def cmd_gate(a):
     state = load(a.file)
-    if not isinstance(state.get("gates"), dict) or a.name not in state["gates"]:
+    if a.name not in GATES:
         sys.stderr.write("unknown gate: %s\n" % a.name)
         sys.exit(1)
     if a.name in PICK_ONLY_GATES:
@@ -254,7 +265,7 @@ def cmd_gate(a):
 
 def cmd_override(a):
     state = load(a.file)
-    if not isinstance(state.get("gates"), dict) or a.gate not in state["gates"]:
+    if a.gate not in GATES:
         sys.stderr.write("unknown gate: %s\n" % a.gate)
         sys.exit(1)
     if a.gate in NON_OVERRIDABLE_GATES:
@@ -474,7 +485,8 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("init"); p.add_argument("--file", required=True)
-    p.add_argument("--project", required=True); p.add_argument("--surface", default="web")
+    p.add_argument("--project", required=True)
+    p.add_argument("--surface", default="web", choices=["web", "app", "marketing-asset", "deck"])
     p.add_argument("--brand-kit", dest="brand_kit", default=None); p.set_defaults(fn=cmd_init)
 
     p = sub.add_parser("gate"); p.add_argument("--file", required=True)
