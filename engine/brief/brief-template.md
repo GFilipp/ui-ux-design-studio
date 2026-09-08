@@ -21,6 +21,9 @@ Fill this from REAL sources only (Stage 0). No fabrication. The human approves t
 - Visual sourcing plan (every planned visual maps to a real source; NO hand-drawing):
     - <visual / section> -> <library:component | mcp-image | asset:path | type-only>
     - <one line per hero and section visual; if a source is unknown, resolve it via the component-scout before building>
+- Direction slate (3 to 4 CHEAP, DIVERGENT candidates the human chooses from BEFORE anything is built; different sources AND archetypes, no derivative pairs; RULES 13-14):
+    - <id> | <source: library / mcp-image / brand-asset / type-only> | <archetype: type-led / photo-led / motion-led / component-grid / generated-imagery> | <one line + the demo/reference screenshot that shows it>
+    - <...>  (record each with `run_state.py candidate --add <id> --source <s> --archetype <a> --fidelity cheap`; `direction --candidate <id>` records the human's choice; if the human already named the direction, `direction --given '<their words>'` and no slate)
 
 ## 4b. Composition (answer these; they are judged at the pick, not by the machine)
 - Attention order: what the eye lands on 1st / 2nd / 3rd. Put the strongest beats FIRST and LAST — the middle is what gets forgotten (serial position effect), and the final impression colours the whole memory (peak-end rule).

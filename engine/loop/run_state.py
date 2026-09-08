@@ -13,7 +13,11 @@ Usage:
   run_state.py ship-check --file design-run.json     # exit 0 ship-ok, 3 blocked
   run_state.py done   --file design-run.json          # finalize: all gates pass -> remove the file
   run_state.py cancel --file design-run.json          # ABORT: remove the file so the Stop hook stops gating
-  run_state.py pick     --file design-run.json --candidate B   # the ONLY way to resolve human_pick
+  run_state.py candidate --file design-run.json --add A --source aceternity --archetype motion-led --fidelity cheap|built
+  run_state.py candidate --file design-run.json --drop A | --list
+  run_state.py direction --file design-run.json --candidate B     # pick the DIRECTION from a cheap, divergent slate (>=3, <=4)
+  run_state.py direction --file design-run.json --given "the human's words"   # the human named the direction up front
+  run_state.py pick     --file design-run.json --candidate B   # the ONLY way to resolve human_pick; B must be a BUILT candidate
   run_state.py brief-ok --file design-run.json        # exit 0 if the brief gate is locked (pass or overridden), else 3
   run_state.py references --file design-run.json --add PATH_OR_URL ...   # record loaded vision references (gate COUNTS these)
   run_state.py vendored   --file design-run.json --add PATH ...          # record library-install paths (drawing_check exempts them)
@@ -49,6 +53,95 @@ PICK_ONLY_GATES = {"human_pick"}
 
 # A reference is a vision exemplar, so it must be an image.
 REFERENCE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".svg"}
+
+# SLATE DISCIPLINE (2026-09-08, two sessions' learnings). A run once built EIGHT full covers, all
+# Aceternity effects, before anyone had chosen anything: expensive, and one well. Two rules, both
+# mechanical. (1) Cheapest choice first: a DIRECTION is picked from a slate of cheap artifacts
+# (reference or demo screenshots, at most one static render each) and only the picked direction
+# gets built; a `built` candidate cannot be registered before a direction exists. (2) Divergent
+# slates: a direction slate needs SLATE_MIN candidates from at least two sources and two
+# archetypes, with no two sharing (source, archetype); "five slightly different derivatives" is
+# refused. SLATE_MAX caps any slate. `direction --given` records a direction the HUMAN named up
+# front, in which case no cheap slate is needed. Honest limit, as with human_pick: a CLI the model
+# drives cannot prove who chose or how cheap a "cheap" candidate really was; it makes the default
+# path the disciplined one and every bypass visible in the run file.
+SLATE_MIN = 3
+SLATE_MAX = 4
+FIDELITIES = ("cheap", "built")
+TOKEN_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,39}$")
+ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$")
+
+
+def slate(state):
+    c = state.get("candidates")
+    return c if isinstance(c, list) else []
+
+
+def direction_of(state):
+    # The chosen direction: a pick from a cheap slate, or the human's stated direction. None if neither.
+    d = state.get("direction")
+    if isinstance(d, dict) and (d.get("candidate") or d.get("given")):
+        return d
+    return None
+
+
+def slate_violations(cands):
+    # Why a slate is NOT a valid direction slate. Empty list = valid.
+    out = []
+    n = len(cands)
+    if n < SLATE_MIN:
+        out.append("only %d of %d directions" % (n, SLATE_MIN))
+    if n > SLATE_MAX:
+        out.append("%d candidates exceeds SLATE_MAX=%d" % (n, SLATE_MAX))
+    not_cheap = [c.get("id") for c in cands if c.get("fidelity") != "cheap"]
+    if not_cheap:
+        out.append("not cheap: %s (a direction slate is cheap artifacts only)" % ", ".join(map(str, not_cheap)))
+    sources = {c.get("source") for c in cands}
+    if n and len(sources) < 2:
+        out.append("one source for all %d (%s): go to other wells" % (n, next(iter(sources))))
+    archetypes = {c.get("archetype") for c in cands}
+    if n and len(archetypes) < 2:
+        out.append("one archetype for all %d (%s): these are variants, not directions" % (n, next(iter(archetypes))))
+    seen = {}
+    for c in cands:
+        k = (c.get("source"), c.get("archetype"))
+        if k in seen:
+            out.append("%s and %s are derivatives: same source (%s) and archetype (%s)" % (seen[k], c.get("id"), k[0], k[1]))
+        else:
+            seen[k] = c.get("id")
+    return out
+
+
+def resting_kind(state):
+    # The ONLY legitimate places to end a turn with an open run, both waiting on a human choice:
+    # "direction" = a valid cheap, divergent slate is registered and no direction is chosen yet;
+    # "final" = a direction exists, a built slate is registered, and every gate but human_pick is
+    # resolved. Anything else (including "parked" with nothing registered to choose from) is not
+    # resting, so the Stop hook keeps the loop going. None = not resting.
+    g = (state.get("gates") or {}).get("brief") or {}
+    if (g.get("status") if isinstance(g, dict) else None) not in ("pass", "overridden"):
+        return None
+    cands = slate(state)
+    if direction_of(state) is None:
+        return "direction" if (cands and not slate_violations(cands)) else None
+    if set(unresolved_gates(state)) == {"human_pick"} and cands and all(c.get("fidelity") == "built" for c in cands):
+        return "final"
+    return None
+
+
+def pick_shortfall(state):
+    # Reconcile human_pick against the slate: a pass whose candidate is not in a built slate under
+    # a recorded direction is hand-edited or stale. None if consistent, else the reason.
+    g = (state.get("gates") or {}).get("human_pick") or {}
+    if (g.get("status") if isinstance(g, dict) else None) != "pass":
+        return None
+    if direction_of(state) is None:
+        return "human_pick reads pass but no direction was ever recorded"
+    pc = state.get("picked_candidate")
+    ids = [c.get("id") for c in slate(state) if c.get("fidelity") == "built"]
+    if pc not in ids:
+        return "human_pick reads pass but picked_candidate %r is not in the built slate %s" % (pc, ids)
+    return None
 
 
 def git_head(cwd):
@@ -229,6 +322,8 @@ def cmd_init(a):
         "references": [],
         "base_sha": git_head(repo_dir),
         "vendored": [],
+        "candidates": [],
+        "direction": None,
         "gates": {g: {"status": "halted", "detail": None, "override_reason": None} for g in GATES},
     }
     state["gates"]["brand_kit"] = {"status": "pass", "detail": a.brand_kit, "override_reason": None}
@@ -313,6 +408,11 @@ def cmd_ship_check(a):
               "(stale or asserted). Record them with `references --add`, or log an override."
               % (short, REFERENCES_MIN))
         sys.exit(3)
+    ps = pick_shortfall(state)
+    if ps is not None:
+        print("BLOCKED — %s. Register the slate with `candidate --add`, record the direction, and "
+              "pick again." % ps)
+        sys.exit(3)
     # The canvas hard-block must fire HERE, not only at `done`: the pod integrates and
     # `git push`es between ship-check and done, so checking only at done fired post-deploy.
     code = drawing_scan_code(a.file)
@@ -355,6 +455,11 @@ def cmd_done(a):
     if short is not None:
         sys.stderr.write("cannot finalize: references gate reads pass but only %d of %d references resolve. "
                          "Record them with `references --add`, or log an override.\n" % (short, REFERENCES_MIN))
+        sys.exit(3)
+    ps = pick_shortfall(state)
+    if ps is not None:
+        sys.stderr.write("cannot finalize: %s. Register the slate with `candidate --add`, record the "
+                         "direction, and pick again.\n" % ps)
         sys.exit(3)
     code = drawing_scan_code(a.file)
     if code is None or code not in (0, 2, 3):
@@ -448,6 +553,23 @@ def cmd_pick(a):
     if not isinstance(state.get("gates"), dict):
         sys.stderr.write("HALT: run file has no gates object.\n")
         sys.exit(3)
+    cid = a.candidate.strip()
+    if direction_of(state) is None:
+        sys.stderr.write("HALT: no direction recorded, so there is nothing legitimate to pick from. Cheapest "
+                         "choice first: register >=%d cheap candidates from different wells (`candidate --add "
+                         "... --fidelity cheap`), get the human's direction (`direction --candidate <id>`), "
+                         "build ONLY that, then pick. If the human named the direction up front, record it: "
+                         "`direction --given '<their words>'`.\n" % SLATE_MIN)
+        sys.exit(3)
+    built = [c for c in slate(state) if c.get("fidelity") == "built"]
+    if not built:
+        sys.stderr.write("HALT: nothing built is registered. Record what the human is choosing from: "
+                         "`candidate --add <id> --source <lib> --archetype <a> --fidelity built`.\n")
+        sys.exit(3)
+    if cid not in [c.get("id") for c in built]:
+        sys.stderr.write("HALT: candidate %r is not in the built slate %s. Register it first, or pick one "
+                         "of those.\n" % (cid, [c.get("id") for c in built]))
+        sys.exit(3)
     state["picked_candidate"] = a.candidate.strip()
     state["gates"]["human_pick"] = {"status": "pass", "detail": a.candidate.strip(),
                                     "override_reason": None}
@@ -456,13 +578,137 @@ def cmd_pick(a):
 
 
 def cmd_resting_ok(a):
-    # ONE definition of "is this run legitimately parked at the human pick?". The Stop hook used
-    # to re-implement this over the run file's own keys, so the two could disagree.
+    # ONE definition of "is this run legitimately parked on a human choice?". The Stop hook used
+    # to re-implement this over the run file's own keys, so the two could disagree. Prints the
+    # kind ("direction" or "final") on stdout so the hook can say what the human is being asked.
     state = load(a.file)
-    unresolved = set(unresolved_gates(state))
-    g = (state.get("gates") or {}).get("brief") or {}
-    brief_ok = (g.get("status") if isinstance(g, dict) else g) in ("pass", "overridden")
-    sys.exit(0 if (brief_ok and unresolved == {"human_pick"}) else 1)
+    kind = resting_kind(state)
+    if kind:
+        print(kind)
+        sys.exit(0)
+    sys.exit(1)
+
+
+def _token(val, flag):
+    v = (val or "").strip().lower()
+    if not TOKEN_RE.match(v):
+        sys.stderr.write("HALT: %s must be a short lowercase token (e.g. aceternity, magicui, mcp-image; "
+                         "type-led, photo-led, motion-led, component-grid, generated-imagery), got %r.\n" % (flag, val))
+        sys.exit(3)
+    return v
+
+
+def cmd_candidate(a):
+    # The slate writer. Every candidate the human will choose from is registered here with its
+    # provenance, so the direction rules (cheap first, divergent, capped) can be checked instead of
+    # trusted. `--add` needs --source, --archetype and --fidelity; `--drop` removes; `--list` prints.
+    state = load(a.file)
+    cands = slate(state)
+    state["candidates"] = cands
+    d = direction_of(state)
+    if a.list_:
+        stage = "final (direction: %s)" % (d.get("candidate") or "given by the human") if d else "direction"
+        print("slate (%d of %d, stage: %s)" % (len(cands), SLATE_MAX, stage))
+        for c in cands:
+            print("  %-8s %-14s %-18s %-6s %s" % (c.get("id"), c.get("source"), c.get("archetype"), c.get("fidelity"), c.get("note") or ""))
+        if d is None:
+            v = slate_violations(cands)
+            print("direction slate: " + ("VALID; record the human's choice with `direction --candidate <id>`" if not v else "NOT valid: " + "; ".join(v)))
+        sys.exit(0)
+    if a.drop:
+        keep = [c for c in cands if c.get("id") != a.drop.strip()]
+        if len(keep) == len(cands):
+            sys.stderr.write("HALT: no candidate %r in the slate.\n" % a.drop)
+            sys.exit(3)
+        state["candidates"] = keep
+        save(a.file, state)
+        print("candidate %s dropped (%d left)" % (a.drop.strip(), len(keep)))
+        sys.exit(0)
+    if not a.add:
+        sys.stderr.write("HALT: candidate needs --add <id> (with --source, --archetype, --fidelity), --drop <id>, or --list.\n")
+        sys.exit(3)
+    cid = a.add.strip()
+    if not ID_RE.match(cid):
+        sys.stderr.write("HALT: --add id must be a short token like A, B, v2 (got %r).\n" % a.add)
+        sys.exit(3)
+    if not a.fidelity:
+        sys.stderr.write("HALT: --fidelity cheap|built is required: cheap = a reference/demo screenshot or at most one "
+                         "static render, no integration; built = integrated into the real repo.\n")
+        sys.exit(3)
+    source = _token(a.source, "--source")
+    archetype = _token(a.archetype, "--archetype")
+    if any(c.get("id") == cid for c in cands):
+        sys.stderr.write("HALT: candidate %s is already in the slate; `candidate --drop %s` first.\n" % (cid, cid))
+        sys.exit(3)
+    if len(cands) >= SLATE_MAX:
+        sys.stderr.write("HALT: the slate is full (SLATE_MAX=%d). Choose before making more: get the direction or the "
+                         "pick, or drop one. Eight covers were once built before anyone had chosen; that is the "
+                         "failure this cap exists for.\n" % SLATE_MAX)
+        sys.exit(3)
+    if a.fidelity == "built" and d is None:
+        sys.stderr.write("HALT: a BUILT candidate before any direction is chosen. Cheapest choice first: register "
+                         ">=%d cheap candidates from different wells, get the human's direction with `direction "
+                         "--candidate <id>`, then build ONLY that. If the human named the direction up front, record "
+                         "it: `direction --given '<their words>'`.\n" % SLATE_MIN)
+        sys.exit(3)
+    if a.fidelity == "cheap" and d is not None:
+        sys.stderr.write("HALT: the direction is already chosen (%s); register what you BUILT for it (--fidelity "
+                         "built). To go back to the direction stage, `direction --clear`.\n"
+                         % (d.get("candidate") or "given by the human"))
+        sys.exit(3)
+    cands.append({"id": cid, "source": source, "archetype": archetype, "fidelity": a.fidelity,
+                  "note": (a.note or "").strip() or None})
+    save(a.file, state)
+    print("candidate %s registered (%d of %d): %s / %s / %s" % (cid, len(cands), SLATE_MAX, source, archetype, a.fidelity))
+    if d is None:
+        v = slate_violations(cands)
+        print("  direction slate " + ("VALID: show it to the human as ONE contact sheet, then `direction --candidate <id>`."
+                                      if not v else "not yet valid: " + "; ".join(v)))
+    sys.exit(0)
+
+
+def cmd_direction(a):
+    # Records WHICH direction gets built. Either the human's choice from a valid cheap slate
+    # (--candidate), or the direction the human stated up front (--given). --clear returns to the
+    # direction stage (drops the slate). Choosing a direction empties the slate: what follows is
+    # the built slate for that direction only.
+    state = load(a.file)
+    if a.clear:
+        state["direction"] = None
+        state["candidates"] = []
+        save(a.file, state)
+        print("direction cleared; back to the direction stage with an empty slate.")
+        sys.exit(0)
+    if a.given is not None:
+        if not a.given.strip():
+            sys.stderr.write("HALT: --given needs the human's words (non-empty).\n")
+            sys.exit(3)
+        state["direction"] = {"candidate": None, "given": a.given.strip(), "slate": []}
+        state["candidates"] = []
+        save(a.file, state)
+        print("direction recorded from the human's words: %r. Build ONLY this; register what you build with "
+              "`candidate --add <id> ... --fidelity built` (at most %d)." % (a.given.strip(), SLATE_MAX))
+        sys.exit(0)
+    cands = slate(state)
+    v = slate_violations(cands)
+    if v:
+        sys.stderr.write("HALT: not a valid direction slate: %s. Fix the slate (`candidate --add/--drop`) before "
+                         "recording a direction.\n" % "; ".join(v))
+        sys.exit(3)
+    cid = (a.candidate or "").strip()
+    if cid not in [c.get("id") for c in cands]:
+        sys.stderr.write("HALT: %r is not in the slate %s.\n" % (cid, [c.get("id") for c in cands]))
+        sys.exit(3)
+    prev = direction_of(state)
+    state["direction"] = {"candidate": cid, "given": None, "slate": cands}
+    state["candidates"] = []
+    save(a.file, state)
+    chosen = next(c for c in cands if c.get("id") == cid)
+    print("direction -> %s (%s / %s) from a slate of %d%s. Build ONLY this direction; register what you build "
+          "with `candidate --add <id> ... --fidelity built` (at most %d, variants only if the human asked)."
+          % (cid, chosen.get("source"), chosen.get("archetype"), len(cands),
+             "; replaces the earlier direction" if prev else "", SLATE_MAX))
+    sys.exit(0)
 
 
 def cmd_brief_ok(a):
@@ -510,6 +756,18 @@ def main():
 
     p = sub.add_parser("pick"); p.add_argument("--file", required=True)
     p.add_argument("--candidate", required=True); p.set_defaults(fn=cmd_pick)
+
+    p = sub.add_parser("candidate"); p.add_argument("--file", required=True)
+    p.add_argument("--add", default=None, metavar="ID"); p.add_argument("--drop", default=None, metavar="ID")
+    p.add_argument("--list", dest="list_", action="store_true")
+    p.add_argument("--source", default=None); p.add_argument("--archetype", default=None)
+    p.add_argument("--fidelity", default=None, choices=list(FIDELITIES)); p.add_argument("--note", default=None)
+    p.set_defaults(fn=cmd_candidate)
+
+    p = sub.add_parser("direction"); p.add_argument("--file", required=True)
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--candidate", default=None); g.add_argument("--given", default=None)
+    g.add_argument("--clear", action="store_true"); p.set_defaults(fn=cmd_direction)
 
     p = sub.add_parser("resting-ok"); p.add_argument("--file", required=True); p.set_defaults(fn=cmd_resting_ok)
 

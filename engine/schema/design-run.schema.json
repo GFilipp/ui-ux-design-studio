@@ -24,7 +24,31 @@
     },
     "picked_candidate": {
       "type": "string",
-      "description": "which candidate the human chose; written only by `run_state.py pick`, the sole way to resolve human_pick"
+      "description": "which candidate the human chose; written only by `run_state.py pick`, the sole way to resolve human_pick. Must be in the built slate; ship-check and done re-verify."
+    },
+    "candidates": {
+      "type": "array",
+      "description": "the CURRENT slate the human chooses from, written only by `run_state.py candidate`. Before a direction: cheap candidates (>=3, <=4, >=2 sources, >=2 archetypes, no shared source+archetype pair) or `direction --candidate` refuses. After a direction: built candidates (<=4); a built candidate is refused before a direction exists.",
+      "items": {
+        "type": "object",
+        "required": ["id", "source", "archetype", "fidelity"],
+        "properties": {
+          "id": { "type": "string" },
+          "source": { "type": "string", "description": "the well: a library (aceternity, magicui, shadcn, heroui, 21st), mcp-image, brand-asset, type-only" },
+          "archetype": { "type": "string", "description": "e.g. type-led, photo-led, motion-led, component-grid, generated-imagery" },
+          "fidelity": { "type": "string", "enum": ["cheap", "built"] },
+          "note": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "direction": {
+      "type": ["object", "null"],
+      "description": "the direction being built: the human's pick from a cheap slate (candidate + the slate snapshot) or the direction the human named up front (given). null until chosen; `pick` refuses without one.",
+      "properties": {
+        "candidate": { "type": ["string", "null"] },
+        "given": { "type": ["string", "null"] },
+        "slate": { "type": "array" }
+      }
     },
     "gates": {
       "type": "object",

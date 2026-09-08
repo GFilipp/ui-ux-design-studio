@@ -22,6 +22,8 @@ Wire into `~/.claude/settings.json` (do this via the `update-config` skill, not 
 }
 ```
 
+Two resting states let a turn end with an open run, both waiting on the human with something registered to choose from: the DIRECTION pick (a cheap, divergent slate is registered, nothing built) and the final pick (a built slate is registered, every other gate resolved). `run_state.py resting-ok` is the single definition and prints which. A run parked with nothing registered to choose from is not resting, so the hook keeps the loop going until the slate exists (RULES 13-14).
+
 `engine/preflight.sh` reports this wiring as `stop-hook` (`WARN` when absent). It only reads
 `settings.json`; it never edits it.
 

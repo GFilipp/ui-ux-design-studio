@@ -93,17 +93,22 @@ if python3 "$STATE" ship-check --file "$RUN_FILE" >$OUT_DIR/gate.out 2>&1; then
   exit 0
 fi
 
-# Legitimate resting state: every model-fixable gate is resolved and the ONLY
-# halted gate is human_pick. The taste pick belongs to the human (RULES 12);
-# the model must neither pass nor override it, so blocking the stop here would
-# deadlock the loop. Allow the stop; ship-check still blocks Stage 4 until the
-# human picks, so no enforcement is lost.
-if python3 "$STATE" resting-ok --file "$RUN_FILE" >/dev/null 2>&1; then
-  echo "design-gate: parked at human_pick (all other gates resolved). Present the candidates and get the human's pick; shipping stays blocked until then." >&2
+# Legitimate resting states, both waiting on a HUMAN choice with something registered to choose
+# from: "direction" = a cheap, divergent slate is registered and no direction is chosen yet
+# (nothing built); "final" = a direction exists, a built slate is registered, and every gate but
+# human_pick is resolved. The picks belong to the human (RULES 12-14); the model must neither
+# pass nor override them, so blocking the stop here would deadlock the loop. A run parked with
+# NOTHING registered to choose from is not resting: the loop continues until the slate exists.
+# `resting-ok` is the single definition and prints the kind.
+if KIND=$(python3 "$STATE" resting-ok --file "$RUN_FILE" 2>/dev/null); then
+  case "$KIND" in
+    direction) echo "design-gate: parked at the DIRECTION pick (a cheap, divergent slate is registered; nothing is built). Show the human the slate as ONE contact sheet, record their choice with run_state.py direction --file design-run.json --candidate <id>, then build ONLY that direction." >&2 ;;
+    *)         echo "design-gate: parked at human_pick (all other gates resolved; a built slate is registered). Present the built candidates and get the human's pick; shipping stays blocked until then." >&2 ;;
+  esac
   exit 0
 fi
 
 echo "design-gate: floor not passed. Do not finish this build yet." >&2
 cat $OUT_DIR/gate.out >&2
-echo "Exits: (1) if 'brief' is halted, lock the human-approved brief first (Stage 1; run_state.py gate --file design-run.json --name brief --status pass); (2) pass the failing gates via the floor loop or log an explicit override (run_state.py override --file design-run.json --gate <g> --reason '...'); (3) if 'human_pick' is the blocker, present the candidates and record the human's choice (run_state.py pick --file design-run.json --candidate <id>) — it cannot be set with 'gate' or overridden; (4) abort the run entirely (run_state.py cancel --file design-run.json)." >&2
+echo "Exits: (1) if 'brief' is halted, lock the human-approved brief first (Stage 1; run_state.py gate --file design-run.json --name brief --status pass); (2) pass the failing gates via the floor loop or log an explicit override (run_state.py override --file design-run.json --gate <g> --reason '...'); (3) waiting on a human choice? register what they choose from FIRST: before any build, 3-4 CHEAP candidates from different wells (run_state.py candidate --file design-run.json --add <id> --source <lib> --archetype <a> --fidelity cheap; one-well or derivative slates and a fifth candidate are refused), then stop or ask; after run_state.py direction --candidate <id>, build ONLY that, register it (--fidelity built) and record the human's pick (run_state.py pick --file design-run.json --candidate <id>) — human_pick cannot be set with 'gate' or overridden; (4) abort the run entirely (run_state.py cancel --file design-run.json)." >&2
 exit 2

@@ -43,6 +43,9 @@ newrun() { # newrun <dir>
   for g in brief references assets no_drawing contrast orphans layout console targets type_size measure responsive; do
     python3 "$RS" gate --file "$d/design-run.json" --name "$g" --status pass >/dev/null 2>&1
   done
+  # pick needs a recorded direction and a BUILT candidate (slate discipline).
+  python3 "$RS" direction --file "$d/design-run.json" --given "test: the human named the direction" >/dev/null 2>&1
+  python3 "$RS" candidate --file "$d/design-run.json" --add A --source test --archetype type-led --fidelity built >/dev/null 2>&1
   python3 "$RS" pick --file "$d/design-run.json" --candidate A >/dev/null 2>&1
   # POST-CONDITION: a run that is not shippable here makes every downstream "blocks" assertion
   # pass for the wrong reason (unresolved gates), so abort the suite instead.
@@ -168,6 +171,8 @@ chk "R2 overridden soft finding may ship"     "$(cd "$SF" && python3 "$ROOT/$RS"
 # human_pick cannot be granted by the model
 HP="$TMP/hp"; newrun "$HP"
 chk "R3 gate --name human_pick refused"       "$(rs gate --file "$HP/design-run.json" --name human_pick --status pass)" 3
+chk "R3 pick refuses an unregistered candidate" "$(rs pick --file "$HP/design-run.json" --candidate C)" 3
+python3 "$RS" candidate --file "$HP/design-run.json" --add C --source test --archetype type-led --fidelity built >/dev/null 2>&1
 chk "R3 pick records the candidate"           "$(python3 "$RS" pick --file "$HP/design-run.json" --candidate C 2>&1 | grep -c 'candidate: C')" 1
 chk "R3 candidate persisted in the run file"  "$(python3 -c "import json;print(json.load(open('$HP/design-run.json')).get('picked_candidate'))")" "C"
 
@@ -195,7 +200,10 @@ json.dump({"project":"legacy","surface":"web","brand_kit":"x","references":["ref
 PYEOF
 chk "L1 legacy file: new gate is settable (was 'unknown gate')" "$(rs gate --file "$LG/design-run.json" --name targets --status pass)" 0
 for g in console type_size measure; do python3 "$RS" gate --file "$LG/design-run.json" --name $g --status pass >/dev/null 2>&1; done
-chk "L1 legacy file parks at human_pick (resting-ok)"          "$(rs resting-ok --file "$LG/design-run.json")" 0
+chk "L1 legacy file: nothing to choose from is NOT resting"    "$(rs resting-ok --file "$LG/design-run.json")" 1
+python3 "$RS" direction --file "$LG/design-run.json" --given "legacy: the human named it" >/dev/null 2>&1
+python3 "$RS" candidate --file "$LG/design-run.json" --add A --source test --archetype type-led --fidelity built >/dev/null 2>&1
+chk "L1 legacy file parks at human_pick once a built slate exists" "$(python3 "$RS" resting-ok --file "$LG/design-run.json" 2>/dev/null)" "final"
 python3 "$RS" pick --file "$LG/design-run.json" --candidate A >/dev/null 2>&1
 chk "L1 legacy file ships once resolved"                       "$(cd "$LG" && python3 "$ROOT/$RS" ship-check --file design-run.json >/dev/null 2>&1; echo $?)" 0
 # Every gate added today must actually BLOCK ship when halted. Removing one from GATES must go red.
@@ -440,6 +448,64 @@ REG_NAMES=$(sed -n "/^REGISTRY='/,/'\$/p" $PF | sed "s/^REGISTRY='//; s/'\$//" |
 DOC_NAMES=$(grep -E '^\| `[a-z0-9-]+` +\|' TOOLS.md | sed -E 's/^\| `([a-z0-9-]+)`.*/\1/' | sort)
 chk "registry is non-empty"                            "$([ -n "$REG_NAMES" ] && echo yes || echo no)" yes
 chk "TOOLS.md lists exactly the preflight registry"    "$(diff <(echo "$REG_NAMES") <(echo "$DOC_NAMES") | wc -l | tr -d ' ')" 0
+
+echo "=== 11. slate discipline: cheapest choice first, divergent directions, capped (tokenomics) ==="
+SL="$TMP/slate"; mkdir -p "$SL/refs"; for i in 1 2 3; do printf 'PNGDATA' > "$SL/refs/r$i.png"; done
+python3 "$RS" init --file "$SL/design-run.json" --project slate --surface web --brand-kit "$KIT" >/dev/null 2>&1
+python3 "$RS" references --file "$SL/design-run.json" --add refs/r1.png refs/r2.png refs/r3.png >/dev/null 2>&1
+python3 "$RS" gate --file "$SL/design-run.json" --name brief --status pass >/dev/null 2>&1
+cand() { python3 "$RS" candidate --file "$SL/design-run.json" "$@" >/dev/null 2>&1; echo $?; }
+chk "S1 built candidate before any direction refused"     "$(cand --add X --source magicui --archetype type-led --fidelity built)" 3
+chk "S1 ...message says cheapest choice first"            "$(python3 "$RS" candidate --file "$SL/design-run.json" --add X --source magicui --archetype type-led --fidelity built 2>&1 | grep -c 'Cheapest choice first')" 1
+chk "S2 no slate: brief-locked run is NOT resting"        "$(rs resting-ok --file "$SL/design-run.json")" 1
+for c in A B C; do cand --add $c --source aceternity --archetype arch-$c --fidelity cheap >/dev/null; done
+chk "S3 one well: direction refused"                      "$(rs direction --file "$SL/design-run.json" --candidate A)" 3
+chk "S3 ...names the single source"                       "$(python3 "$RS" direction --file "$SL/design-run.json" --candidate A 2>&1 | grep -c 'one source for all 3 (aceternity)')" 1
+cand --drop C >/dev/null; cand --add C --source magicui --archetype arch-a --fidelity cheap >/dev/null
+cand --drop B >/dev/null; cand --add B --source aceternity --archetype arch-a --fidelity cheap >/dev/null
+chk "S4 derivatives (same source+archetype) refused"      "$(python3 "$RS" direction --file "$SL/design-run.json" --candidate A 2>&1 | grep -c 'A and B are derivatives')" 1
+cand --drop B >/dev/null; cand --drop C >/dev/null
+cand --add B --source magicui --archetype arch-a --fidelity cheap >/dev/null; cand --add C --source shadcn --archetype arch-a --fidelity cheap >/dev/null
+chk "S5 one archetype across three sources refused"       "$(python3 "$RS" direction --file "$SL/design-run.json" --candidate A 2>&1 | grep -c 'one archetype for all 3')" 1
+cand --drop C >/dev/null
+chk "S6 two candidates: below SLATE_MIN refused"          "$(python3 "$RS" direction --file "$SL/design-run.json" --candidate A 2>&1 | grep -c 'only 2 of 3 directions')" 1
+cand --add C --source mcp-image --archetype generated-imagery --fidelity cheap >/dev/null
+cand --add D --source shadcn --archetype component-grid --fidelity cheap >/dev/null
+chk "S7 fifth candidate refused (SLATE_MAX=4)"            "$(cand --add E --source heroui --archetype photo-led --fidelity cheap)" 3
+chk "S7 ...names the cap"                                 "$(python3 "$RS" candidate --file "$SL/design-run.json" --add E --source heroui --archetype photo-led --fidelity cheap 2>&1 | grep -c 'SLATE_MAX=4')" 1
+chk "S8 token shape: 'Magic UI' refused"                  "$(cand --add E --source 'Magic UI' --archetype type-led --fidelity cheap)" 3
+chk "S8 duplicate id refused"                             "$(cand --add A --source heroui --archetype photo-led --fidelity cheap)" 3
+chk "S9 valid divergent slate IS resting (direction)"     "$(python3 "$RS" resting-ok --file "$SL/design-run.json" 2>/dev/null)" "direction"
+chk "S9 hook parks at the DIRECTION pick"                 "$(cd "$SL" && bash "$ROOT/hooks/design-gate.sh" 2>&1 | grep -c 'parked at the DIRECTION pick')" 1
+chk "S9 hook exit 0 at the direction park"                "$(cd "$SL" && bash "$ROOT/hooks/design-gate.sh" >/dev/null 2>&1; echo $?)" 0
+chk "S10 direction on a non-member refused"               "$(rs direction --file "$SL/design-run.json" --candidate Z)" 3
+chk "S10 direction recorded from the slate"               "$(rs direction --file "$SL/design-run.json" --candidate B)" 0
+chk "S10 ...run file: direction B, slate snapshot of 4"   "$(python3 -c "import json;s=json.load(open('$SL/design-run.json'));print(s['direction']['candidate'], len(s['direction']['slate']), len(s['candidates']))")" "B 4 0"
+chk "S11 cheap candidate after the direction refused"     "$(cand --add Z --source shadcn --archetype component-grid --fidelity cheap)" 3
+chk "S12 pick with nothing built refused"                 "$(rs pick --file "$SL/design-run.json" --candidate V1)" 3
+cand --add V1 --source magicui --archetype arch-a --fidelity built >/dev/null
+chk "S12 pick of an unregistered id refused"              "$(rs pick --file "$SL/design-run.json" --candidate V9)" 3
+chk "S12 pick of the built candidate passes"              "$(rs pick --file "$SL/design-run.json" --candidate V1)" 0
+for g in references assets no_drawing contrast orphans layout console targets type_size measure responsive; do python3 "$RS" gate --file "$SL/design-run.json" --name $g --status pass >/dev/null 2>&1; done
+chk "S13 consistent run ships"                            "$(cd "$SL" && python3 "$ROOT/$RS" ship-check --file design-run.json >/dev/null 2>&1; echo $?)" 0
+python3 - "$SL/design-run.json" <<'PYEOF'
+import json,sys
+s=json.load(open(sys.argv[1])); s["picked_candidate"]="ghost"; json.dump(s,open(sys.argv[1],"w"))
+PYEOF
+chk "S13 hand-edited pick outside the built slate blocks ship-check" "$(cd "$SL" && python3 "$ROOT/$RS" ship-check --file design-run.json 2>&1 | grep -c 'not in the built slate')" 1
+chk "S13 ...and blocks done"                              "$(cd "$SL" && python3 "$ROOT/$RS" done --file design-run.json >/dev/null 2>&1; echo $?)" 3
+python3 - "$SL/design-run.json" <<'PYEOF'
+import json,sys
+s=json.load(open(sys.argv[1])); s["picked_candidate"]="V1"; s["direction"]=None; json.dump(s,open(sys.argv[1],"w"))
+PYEOF
+chk "S13 pick without any direction blocks ship-check"    "$(cd "$SL" && python3 "$ROOT/$RS" ship-check --file design-run.json 2>&1 | grep -c 'no direction was ever recorded')" 1
+# The human named the direction up front: no cheap slate needed, built candidates allowed at once.
+GV="$TMP/given"; mkdir -p "$GV"; python3 "$RS" init --file "$GV/design-run.json" --project given --surface web --brand-kit "$KIT" >/dev/null 2>&1
+chk "S14 --given with empty words refused"                "$(rs direction --file "$GV/design-run.json" --given '   ')" 3
+chk "S14 --given records the human's direction"           "$(rs direction --file "$GV/design-run.json" --given 'lamp hero, nothing else')" 0
+chk "S14 built candidate allowed after --given"           "$(python3 "$RS" candidate --file "$GV/design-run.json" --add G1 --source aceternity --archetype motion-led --fidelity built >/dev/null 2>&1; echo $?)" 0
+chk "S15 --clear returns to the direction stage"          "$(rs direction --file "$GV/design-run.json" --clear)" 0
+chk "S15 ...slate emptied and direction null"             "$(python3 -c "import json;s=json.load(open('$GV/design-run.json'));print(s['direction'], len(s['candidates']))")" "None 0"
 
 echo
 echo "================ $pass passed, $fail failed ================"
