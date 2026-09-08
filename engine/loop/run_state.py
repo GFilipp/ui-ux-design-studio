@@ -12,7 +12,8 @@ Usage:
   run_state.py ship-check --file design-run.json     # exit 0 ship-ok, 3 blocked
   run_state.py done   --file design-run.json          # finalize: all gates pass -> remove the file
   run_state.py cancel --file design-run.json          # ABORT: remove the file so the Stop hook stops gating
-  run_state.py brief-ok --file design-run.json        # exit 0 if the brief gate is locked (pass), else 3 (build blocked)
+  run_state.py pick     --file design-run.json --candidate B   # the ONLY way to resolve human_pick
+  run_state.py brief-ok --file design-run.json        # exit 0 if the brief gate is locked (pass or overridden), else 3
   run_state.py references --file design-run.json --add PATH_OR_URL ...   # record loaded vision references (gate COUNTS these)
   run_state.py vendored   --file design-run.json --add PATH ...          # record library-install paths (drawing_check exempts them)
 """
@@ -34,6 +35,15 @@ REFERENCES_MIN = 3
 # self-authorize the one decision RULES 12 reserves for the human (2026-09-08 audit).
 NON_OVERRIDABLE_GATES = {"human_pick"}
 
+# human_pick is also NOT settable via `gate`: it was non-overridable but freely passable, so one
+# command still let the model grant itself the human's taste pick. It now requires `pick`, which
+# records WHICH candidate was chosen. This does not prove a human acted (nothing in a CLI the
+# model drives can); it makes the bypass deliberate and the audit trail honest.
+PICK_ONLY_GATES = {"human_pick"}
+
+# A reference is a vision exemplar, so it must be an image.
+REFERENCE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".svg"}
+
 
 def git_head(cwd):
     # Baseline SHA for the drawing_check git-diff. None if the target is not a git repo yet.
@@ -54,8 +64,10 @@ def drawing_scan_code(run_file):
     try:
         p = subprocess.run([sys.executable, dc, "--git-diff", "--root", ".",
                             "--run-file", os.path.abspath(run_file)],
-                           cwd=repo_dir, capture_output=True, text=True)
+                           cwd=repo_dir, capture_output=True, text=True, timeout=120)
         return p.returncode
+    except subprocess.TimeoutExpired:
+        return None  # treated as "cannot verify" -> fails closed
     except (FileNotFoundError, OSError):
         return None
 
@@ -84,7 +96,7 @@ def url_host(ref):
     if not m:
         return None
     host = m.group(1).split("@")[-1].split(":")[0].lower()
-    if host in ("localhost", "127.0.0.1", "[::1]"):
+    if host in ("localhost", "127.0.0.1"):
         return host
     return host if ("." in host and len(host) >= 4) else None
 
@@ -99,21 +111,38 @@ def reference_is_real(ref, base_dir):
         return False
     r = ref.strip()
     if url_host(r):
-        return True
+        return True  # NOT fetched: we verify the shape, never that the page exists
     if "://" in r:
         return False  # unverifiable scheme, bare "https://", or a single-label host
     p = r if os.path.isabs(r) else os.path.join(base_dir, r)
-    return os.path.isfile(p)
+    # Must be a non-empty IMAGE. Any three existing files used to satisfy the gate
+    # (/etc/hosts counted), which is not a vision reference by any reading.
+    if os.path.splitext(p)[1].lower() not in REFERENCE_EXTS:
+        return False
+    try:
+        return os.path.isfile(p) and os.path.getsize(p) > 0
+    except OSError:
+        return False
 
 
 def reference_key(ref, base_dir):
-    # Identity for dedupe. Local paths collapse via realpath so refs/a.png, ./refs/a.png and
-    # refs/../refs/a.png are ONE reference (string dedupe let the same file count three times).
+    # Identity for dedupe. Local paths collapse via realpath AND normcase, so refs/a.png,
+    # ./refs/a.png, refs/../refs/a.png and refs/A.PNG are ONE reference — realpath alone does
+    # not canonicalize case, so three spellings of one file passed the gate on APFS/NTFS.
+    # URLs collapse to their HOST: three pages of one site are one exemplar, not three.
     r = ref.strip()
-    if url_host(r):
-        return r.rstrip("/").lower()
+    host = url_host(r)
+    if host:
+        return "url:" + host
     p = r if os.path.isabs(r) else os.path.join(base_dir, r)
-    return os.path.realpath(p)
+    # Identity by INODE where possible: os.path.normcase is a no-op outside Windows, so on APFS
+    # (case-insensitive) refs/r1.png and refs/R1.PNG resolved to different keys and one file
+    # counted twice. st_dev/st_ino also collapses hardlinks, which realpath does not.
+    try:
+        st = os.stat(p)
+        return "ino:%s:%s" % (st.st_dev, st.st_ino)
+    except OSError:
+        return os.path.normcase(os.path.realpath(p))
 
 
 def references_count(state, base_dir):
@@ -193,9 +222,14 @@ def cmd_init(a):
 
 def cmd_gate(a):
     state = load(a.file)
-    if a.name not in state["gates"]:
+    if not isinstance(state.get("gates"), dict) or a.name not in state["gates"]:
         sys.stderr.write("unknown gate: %s\n" % a.name)
         sys.exit(1)
+    if a.name in PICK_ONLY_GATES:
+        sys.stderr.write("HALT: '%s' cannot be set with `gate`. The taste pick belongs to the human "
+                         "(RULES 12). Present the candidates, then record the human's actual choice: "
+                         "`run_state.py pick --file %s --candidate <id>`.\n" % (a.name, a.file))
+        sys.exit(3)
     status = "pass" if a.status == "pass" else "halted"
     # references cannot be passed by assertion: the array must actually hold REFERENCES_MIN.
     if a.name == "references" and status == "pass":
@@ -214,7 +248,7 @@ def cmd_gate(a):
 
 def cmd_override(a):
     state = load(a.file)
-    if a.gate not in state["gates"]:
+    if not isinstance(state.get("gates"), dict) or a.gate not in state["gates"]:
         sys.stderr.write("unknown gate: %s\n" % a.gate)
         sys.exit(1)
     if a.gate in NON_OVERRIDABLE_GATES:
@@ -236,12 +270,14 @@ def cmd_ship_check(a):
     state = load(a.file)
     gates = state.get("gates") or {}
     unresolved = unresolved_gates(state)
-    overrides = {g: (gates.get(g) or {}).get("override_reason")
-                 for g in GATES if (gates.get(g) or {}).get("status") == "overridden"}
+    def _g(name):
+        v = gates.get(name)
+        return v if isinstance(v, dict) else {}
+    overrides = {g: _g(g).get("override_reason") for g in GATES if _g(g).get("status") == "overridden"}
     print("=== ship summary: %s (%s) ===" % (state.get("project"), state.get("surface")))
     print("brand kit: %s" % state.get("brand_kit"))
     for g in GATES:
-        v = gates.get(g) if isinstance(gates.get(g), dict) else {}
+        v = _g(g)
         status = v.get("status") or "MISSING"
         line = "  %-12s %s" % (g, status)
         if status == "overridden":
@@ -271,6 +307,11 @@ def cmd_ship_check(a):
     if code == 3:
         print("BLOCKED — hand-drawn <canvas> detected in the build (non-overridable). Remove it "
               "and source the visual from a component, mcp-image, or clean type.")
+        sys.exit(3)
+    if code == 2 and (gates.get("no_drawing") or {}).get("status") != "overridden":
+        print("BLOCKED — hand-authored illustration-scale SVG in the build and no_drawing is not "
+              "overridden. Source it from a component library, mcp-image, or a brand asset, or log "
+              "`override --gate no_drawing --reason '...'`.")
         sys.exit(3)
     print("SHIP OK.")
     sys.exit(0)
@@ -306,6 +347,9 @@ def cmd_done(a):
         sys.exit(3)
     if code == 3:
         sys.stderr.write("cannot finalize: hand-drawn <canvas> detected in the build (non-overridable, even with a no_drawing override). Remove it and source the visual from a component, mcp-image, or clean type.\n")
+        sys.exit(3)
+    if code == 2 and ((state.get("gates") or {}).get("no_drawing") or {}).get("status") != "overridden":
+        sys.stderr.write("cannot finalize: hand-authored illustration-scale SVG in the build and no_drawing is not overridden. Fix it or log an override with a reason.\n")
         sys.exit(3)
     overrides = [g for g, v in (state.get("gates") or {}).items()
                  if isinstance(v, dict) and v.get("status") == "overridden"]
@@ -377,6 +421,33 @@ def cmd_references(a):
         print("  %d more needed before the references gate can pass." % (REFERENCES_MIN - n))
 
 
+def cmd_pick(a):
+    # The ONLY way to resolve human_pick. Records WHICH candidate the human chose, so the run
+    # file says what was picked instead of merely that something was.
+    if not a.candidate or not a.candidate.strip():
+        sys.stderr.write("HALT: pick requires --candidate <id> (which candidate the human chose).\n")
+        sys.exit(3)
+    state = load(a.file)
+    if not isinstance(state.get("gates"), dict):
+        sys.stderr.write("HALT: run file has no gates object.\n")
+        sys.exit(3)
+    state["picked_candidate"] = a.candidate.strip()
+    state["gates"]["human_pick"] = {"status": "pass", "detail": a.candidate.strip(),
+                                    "override_reason": None}
+    save(a.file, state)
+    print("human_pick -> pass (candidate: %s)" % a.candidate.strip())
+
+
+def cmd_resting_ok(a):
+    # ONE definition of "is this run legitimately parked at the human pick?". The Stop hook used
+    # to re-implement this over the run file's own keys, so the two could disagree.
+    state = load(a.file)
+    unresolved = set(unresolved_gates(state))
+    g = (state.get("gates") or {}).get("brief") or {}
+    brief_ok = (g.get("status") if isinstance(g, dict) else g) in ("pass", "overridden")
+    sys.exit(0 if (brief_ok and unresolved == {"human_pick"}) else 1)
+
+
 def cmd_brief_ok(a):
     # Build gate: refuse to build until the human-approved brief is locked (Stage 1).
     # Contract parity: a gate exits via pass OR overridden(reason), so an explicit
@@ -418,6 +489,11 @@ def main():
 
     p = sub.add_parser("references"); p.add_argument("--file", required=True)
     p.add_argument("--add", nargs="*", default=[]); p.set_defaults(fn=cmd_references)
+
+    p = sub.add_parser("pick"); p.add_argument("--file", required=True)
+    p.add_argument("--candidate", required=True); p.set_defaults(fn=cmd_pick)
+
+    p = sub.add_parser("resting-ok"); p.add_argument("--file", required=True); p.set_defaults(fn=cmd_resting_ok)
 
     p = sub.add_parser("brief-ok"); p.add_argument("--file", required=True); p.set_defaults(fn=cmd_brief_ok)
 

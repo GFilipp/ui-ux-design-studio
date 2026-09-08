@@ -37,9 +37,18 @@ def is_large(font_size, font_weight):
     return font_size >= 24 or (font_size >= 18.66 and font_weight >= 700)
 
 
+def owns_text(n):
+    # A parent whose visible text lives entirely in an inline child reports that text paired with
+    # the PARENT's color, which produced contrast "failures" on text that was perfectly readable
+    # (and unfixable by recoloring). The inline child covers that text with the right color.
+    return n.get("ownsDirectText", True)
+
+
 def check_contrast(nodes):
     fails, indeterminate = [], []
     for n in nodes:
+        if not owns_text(n):
+            continue  # its inline child reports the same text with the correct color
         if not n.get("color") or not n.get("bg"):
             continue
         if n.get("bgImage"):
@@ -102,7 +111,7 @@ def check_console(data):
 
 def check_style(nodes):
     # WARN-ONLY: rare em dashes are fine; a pileup is the AI tell. Never blocks.
-    n = sum(node.get("text", "").count("—") for node in nodes)
+    n = sum(node.get("text", "").count("—") for node in nodes if owns_text(node))
     return n
 
 

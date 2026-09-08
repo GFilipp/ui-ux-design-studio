@@ -1,0 +1,18 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>contrast: inline-child color</title></head>
+<body style="background:#fff;margin:0;padding:16px">
+<!--
+Regression fixture for the FALSE CONTRAST FAILURE introduced with the orphan fix (2026-09-08).
+`ownText` made a parent emit its child's text, but paired with the PARENT's computed color. Here
+the h1 is white-on-white (invisible if it owned text) while every rendered glyph is #111 on white
+at 18.9:1. Without the ownsDirectText guard the h1 reports contrast 1.0 and the run wedges on a
+defect that does not exist and cannot be fixed by recoloring anything.
+
+The h1 must NOT appear as a contrast failure; the span (which owns the text) must be the node
+that is judged. Assert the CONTRAST GATE, not the exit code — other gates may fire here.
+-->
+<h1 style="color:#fff;font-size:40px;font-weight:700;margin:0;line-height:1.1">
+  <span style="color:#111">Ship faster with real components</span>
+</h1>
+<p style="color:#fff;margin:16px 0 0"><strong style="color:#333">Body copy inside a strong wrapper stays readable.</strong></p>
+</body></html>

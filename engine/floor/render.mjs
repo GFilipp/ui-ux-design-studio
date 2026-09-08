@@ -81,6 +81,10 @@ for (const t of targets) {
     });
   });
   await page.waitForTimeout(700); // let revealed / injected content settle
+  // Screenshot BEFORE extracting: extract.js strips React SSR comment markers, so measuring
+  // first meant the image handed to the human could differ from the page that was measured.
+  const shotPath = join(outDir, `shot-${t.bp}.png`);
+  await page.screenshot({ path: shotPath, fullPage: true });
   const json = await page.evaluate(extractSrc); // extract.js is a self-invoking expression
   const extractPath = join(outDir, `extract-${t.bp}.json`);
   // Merge the console capture into the extract so floor_check gates on it.
@@ -91,8 +95,6 @@ for (const t of targets) {
     extractOut = JSON.stringify(parsed);
   } catch {}
   writeFileSync(extractPath, extractOut);
-  const shotPath = join(outDir, `shot-${t.bp}.png`);
-  await page.screenshot({ path: shotPath, fullPage: true });
   let vp = null;
   try { vp = JSON.parse(typeof json === "string" ? json : "{}").viewport; } catch {}
   results.push({ bp: t.bp, extract: extractPath, shot: shotPath, viewport: vp });

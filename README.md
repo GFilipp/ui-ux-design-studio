@@ -49,7 +49,7 @@ python3 engine/loop/run_state.py ship-check --file design-run.json
 
 ## Status
 Phase 1 (lean core): deterministic floor + fail-loud state machine + design-pod + /design-studio
-command + Stop-hook gate. Self-tests: `bash engine/test/run-selftests.sh` (52 cases; fixtures in `samples/`). Every 2026-09-08 audit finding has a named regression case. Since shipped: image-gen (`mcp-image`), 21st.dev
+command + Stop-hook gate. Self-tests: `bash engine/test/run-selftests.sh` (75 cases; fixtures in `samples/`). Every 2026-09-08 audit finding has a named regression case, and the repaired cases are MUTATION-CHECKED: reverting a fix must turn its test red. Since shipped: image-gen (`mcp-image`), 21st.dev
 components, the provenance-based anti-drawing scanner (`engine/floor/drawing_check.py`), and a
 counted references gate. Deferred: divergent-direction automation, multi-surface expansion, Vercel
 audit skills. Rejected: Lazyweb on price (the screen library is $39/mo; Mobbin covers the category for less),

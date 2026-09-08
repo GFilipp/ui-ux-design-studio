@@ -12,6 +12,8 @@ set -euo pipefail
 
 HOME_DIR="${DESIGN_STUDIO_HOME:-}"
 RUN_FILE="./design-run.json"
+OUT_DIR="$(mktemp -d)"
+trap 'rm -rf "$OUT_DIR"' EXIT
 
 # No active design run -> no-op (do not interfere with unrelated sessions).
 [ -f "$RUN_FILE" ] || exit 0
@@ -37,10 +39,10 @@ fi
 if [ -f "$DCHECK" ]; then
   # `|| DRC=$?` keeps the non-zero scan exit from tripping `set -e` before we branch on it.
   DRC=0
-  python3 "$DCHECK" --git-diff --root . --run-file "$RUN_FILE" >/tmp/design-drawing.out 2>&1 || DRC=$?
+  python3 "$DCHECK" --git-diff --root . --run-file "$RUN_FILE" >$OUT_DIR/drawing.out 2>&1 || DRC=$?
   if [ "$DRC" = "3" ]; then
     echo "design-gate: HAND-DRAWING detected — canvas 2D drawing in authored source. This is NOT overridable." >&2
-    cat /tmp/design-drawing.out >&2
+    cat $OUT_DIR/drawing.out >&2
     echo "Replace it with a real component (e.g. an aceternity/magicui background), generated imagery (mcp-image), or clean type + tokens, then continue." >&2
     exit 2
   elif [ "$DRC" = "2" ]; then
@@ -56,24 +58,30 @@ PY
 )
     if [ "$OVR" != "yes" ]; then
       echo "design-gate: hand-authored illustration-scale SVG in authored source (the no_drawing gate reads clean or is stale; the scan is authoritative)." >&2
-      cat /tmp/design-drawing.out >&2
+      cat $OUT_DIR/drawing.out >&2
       echo "Source it from a component library, mcp-image, or a real brand asset. If genuinely intentional, log: run_state.py override --file design-run.json --gate no_drawing --reason '...'." >&2
       exit 2
     fi
+  elif [ "$DRC" = "5" ]; then
+    # Degraded: no usable baseline, so committed work was NOT scanned. One `git commit` used to
+    # empty the scan and report clean, which is how a canvas could reach a push unnoticed.
+    echo "design-gate: the anti-drawing scan could not cover committed work (no usable base_sha). Re-run run_state.py init inside the git repo so the baseline is recorded; do not treat this as clean." >&2
+    cat $OUT_DIR/drawing.out >&2
+    exit 2
   elif [ "$DRC" = "4" ]; then
     # Usage error: the scanner NEVER RAN. Exit 4 exists so this cannot be mistaken for the
     # exit-2 "soft finding, overridden, proceed" path, which is what used to happen.
     echo "design-gate: drawing_check was invoked incorrectly (exit 4) — the anti-drawing scan did NOT run. Fix the invocation; do not treat this as a clean scan." >&2
-    cat /tmp/design-drawing.out >&2
+    cat $OUT_DIR/drawing.out >&2
     exit 2
   elif [ "$DRC" != "0" ]; then
     # Unexpected failure (missing dep, crash). Warn loudly; ship-check/done fail closed on this.
     echo "design-gate: WARNING — drawing_check did not run cleanly (exit $DRC); the drawing backstop did NOT cover this turn." >&2
-    cat /tmp/design-drawing.out >&2
+    cat $OUT_DIR/drawing.out >&2
   fi
 fi
 
-if python3 "$STATE" ship-check --file "$RUN_FILE" >/tmp/design-gate.out 2>&1; then
+if python3 "$STATE" ship-check --file "$RUN_FILE" >$OUT_DIR/gate.out 2>&1; then
   exit 0
 fi
 
@@ -82,24 +90,12 @@ fi
 # the model must neither pass nor override it, so blocking the stop here would
 # deadlock the loop. Allow the stop; ship-check still blocks Stage 4 until the
 # human picks, so no enforcement is lost.
-ONLY_PICK=$(python3 - "$RUN_FILE" <<'PY'
-import json, sys
-try:
-    s = json.load(open(sys.argv[1]))
-    gates = s.get("gates", {})
-    halted = {n for n, g in gates.items() if (g.get("status") if isinstance(g, dict) else g) not in ("pass", "overridden")}
-    brief_ok = (gates.get("brief", {}).get("status") if isinstance(gates.get("brief"), dict) else gates.get("brief")) in ("pass", "overridden")
-    print("yes" if brief_ok and halted == {"human_pick"} else "no")
-except Exception:
-    print("no")
-PY
-)
-if [ "$ONLY_PICK" = "yes" ]; then
+if python3 "$STATE" resting-ok --file "$RUN_FILE" >/dev/null 2>&1; then
   echo "design-gate: parked at human_pick (all other gates resolved). Present the candidates and get the human's pick; shipping stays blocked until then." >&2
   exit 0
 fi
 
 echo "design-gate: floor not passed. Do not finish this build yet." >&2
-cat /tmp/design-gate.out >&2
-echo "Three exits: (1) if 'brief' is halted, lock the human-approved brief first (Stage 1; run_state.py gate --name brief --status pass); (2) pass the failing gates via the floor loop or log an explicit override (run_state.py override --file design-run.json --gate <g> --reason '...'); (3) abort the run entirely (run_state.py cancel --file design-run.json)." >&2
+cat $OUT_DIR/gate.out >&2
+echo "Exits: (1) if 'brief' is halted, lock the human-approved brief first (Stage 1; run_state.py gate --file design-run.json --name brief --status pass); (2) pass the failing gates via the floor loop or log an explicit override (run_state.py override --file design-run.json --gate <g> --reason '...'); (3) if 'human_pick' is the blocker, present the candidates and record the human's choice (run_state.py pick --file design-run.json --candidate <id>) — it cannot be set with 'gate' or overridden; (4) abort the run entirely (run_state.py cancel --file design-run.json)." >&2
 exit 2

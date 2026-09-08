@@ -23,4 +23,4 @@ These are the non-negotiable rules for the design tool. They are the distilled f
 11. **Honest, plain, no hype.** No buzzwords, no fake urgency, no unsupported claims.
 
 ## Quality
-12. **Floor is the floor, not the bar.** The objective floor (mobile-first contrast, orphans, overflow) is a minimum. Passing it does not mean beautiful. The brief and the human pick set the bar.
+12. **The taste pick is the human's.** `human_pick` cannot be set with `gate` and cannot be overridden; it resolves only via `run_state.py pick --candidate <id>`, which records WHICH candidate was chosen. Honest limit: nothing in a CLI the model drives can PROVE a human chose. The mechanism makes usurping the pick deliberate and visible in the run file, not impossible. **Floor is the floor, not the bar.** The objective floor (mobile-first contrast, orphans, overflow) is a minimum. Passing it does not mean beautiful. The brief and the human pick set the bar.

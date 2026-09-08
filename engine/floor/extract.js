@@ -74,12 +74,8 @@
   // Measures ACROSS inline element children. Previously it bailed out (returned null) on any
   // element child, so the dominant marketing-headline shape was never measured at all.
   function lastLineWordCount(el) {
-    // React SSR separates adjacent text parts with comment nodes; strip them so
-    // normalize() can merge the parts back into one measurable text node.
-    for (var ci = el.childNodes.length - 1; ci >= 0; ci--) {
-      if (el.childNodes[ci].nodeType === 8) el.removeChild(el.childNodes[ci]);
-    }
-    el.normalize(); // merge adjacent text nodes (React splits {a}{'\u00A0'}{b} into 3)
+    // Comment stripping + normalize() happen ONCE for the whole document below, before this
+    // loop runs, so this function no longer mutates the DOM per element.
     if (el.children.length && !onlyInlineChildren(el)) return null; // block children: not one line
     var tns = collectTextNodes(el);
     if (!tns.length) return null;
@@ -109,6 +105,15 @@
     }
     return count;
   }
+  // Strip React SSR comment markers ONCE. Doing it per-element mutated the live DOM during the
+  // measurement loop and forced a layout pass per element; render.mjs now also screenshots BEFORE
+  // this runs, so the human's pick image is the untouched page.
+  (function (root) {
+    var w = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT, null), cs = [], n;
+    while ((n = w.nextNode())) cs.push(n);
+    for (var i = 0; i < cs.length; i++) if (cs[i].parentNode) cs[i].parentNode.removeChild(cs[i]);
+  })(document.body);
+  document.body.normalize();
   var report = {
     viewport: { w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio },
     textNodes: [], images: [], overflow: {}
@@ -130,6 +135,7 @@
       fontSize: parseFloat(cs.fontSize),
       fontWeight: parseInt(cs.fontWeight) || 400,
       display: cs.display,
+      ownsDirectText: directText(el).length > 0,
       rect: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
       lastLineWords: lastLineWordCount(el),
       totalWords: txt.split(/\s+/).length

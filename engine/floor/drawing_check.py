@@ -26,7 +26,9 @@ Modes:
 
 Exit: 0 clean (warns allowed) | 2 block-soft (illustration SVG, overridable)
       | 3 block-hard (canvas 2D drawing, non-overridable) | 4 usage error (distinct from 2 on
-      purpose: a scanner that never RAN must not read as a scanned-and-waived soft finding).
+      purpose: a scanner that never RAN must not read as a scanned-and-waived soft finding)
+      | 5 degraded: no usable baseline, so committed work was not scanned — "cannot verify",
+      never "clean" (one `git commit` used to empty the scan silently).
 """
 import argparse
 import base64
@@ -174,6 +176,21 @@ def extra_vendored_from_components_json(root):
     return subs
 
 
+def sanitize_vendored(abs_paths, root):
+    # The run file is model-owned JSON and these entries exempt by PATH PREFIX, so an unvalidated
+    # "." or ".." disabled the scanner entirely. Validated HERE (at consumption) rather than only
+    # in run_state's writer, which the model can bypass by editing the JSON directly.
+    rootr = os.path.realpath(root)
+    kept, dropped = [], []
+    for p in abs_paths:
+        rp = os.path.realpath(p)
+        if not os.path.exists(rp) or rp == rootr or not rp.startswith(rootr + os.sep):
+            dropped.append(p)
+        else:
+            kept.append(rp)
+    return kept, dropped
+
+
 def is_vendored(abspath, vendored_abs, brand_abs, extra_subs, root="."):
     # Provenance allowlist. Path-prefix matching only (no basename fallback — matching by
     # basename would exempt every file of that name repo-wide). Segments are matched RELATIVE
@@ -182,7 +199,7 @@ def is_vendored(abspath, vendored_abs, brand_abs, extra_subs, root="."):
     for sub in VENDORED_SUBPATHS + extra_subs:
         if subpath_matches(parts, sub):
             return "vendored-dir"
-    norm = os.path.normpath(abspath)
+    norm = os.path.realpath(abspath)
     for v in vendored_abs:
         if norm == v or norm.startswith(v + os.sep):
             return "install-manifest"
@@ -249,7 +266,15 @@ def decode_datauri(rest):
         return data
 
 
+def strip_comments(text):
+    # Comments are not code. A doc comment mentioning getContext("2d") beside an unrelated
+    # Array.fill() produced a soft block on a file that draws nothing.
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    return re.sub(r"(?m)//[^\n]*", " ", text)
+
+
 def find_canvas2d_draw(text):
+    text = strip_comments(text)
     # LAYERED, because both extremes are wrong:
     #   - matching getContext('2d') and ANY `.prim(` independently made `ctx.measureText()`
     #     beside an unrelated `Array(12).fill(0)` a NON-OVERRIDABLE block that wedged the run;
@@ -277,9 +302,15 @@ def find_canvas2d_draw(text):
     ids = set()
     for gm in re.finditer(r"getContext\(\s*[\"'`]2d[\"'`]", text):
         head = text[max(0, gm.start() - 400):gm.start()]
-        names = re.findall(r"([A-Za-z_$][\w$]*)\s*(?:!|\?)?\s*(?::[^=\n]{0,120})?=", head)
-        if names:
-            ids.add(names[-1])
+        # Only the assignment whose RIGHT-HAND SIDE contains THIS getContext call counts. Taking
+        # the last `X =` anywhere in the window bound unrelated locals: `const rows = new Array(12)`
+        # before a getContext call made `rows.fill(0)` look like canvas drawing and produced a
+        # NON-OVERRIDABLE false block. So cut back to the current statement first.
+        frag = re.split(r"[;{}\n]", head)[-1]
+        am = re.search(r"([A-Za-z_$][\w$.]*)\s*(?:!|\?)?\s*(?::[^=]{0,120})?"
+                       r"(?<![!<>=+\-*/%&|^])=(?![=>])[^=]*$", frag)
+        if am:
+            ids.add(am.group(1).split(".")[-1])
     for ident in sorted(ids):
         m = re.search(r"\b%s\s*[!?]?\s*\.\s*(%s)\s*\(" % (re.escape(ident), prims), text)
         if m:
@@ -321,7 +352,7 @@ def scan_text(rel, text):
     # 3) Inline <svg> blocks (or whole-file for .svg).
     is_svg_file = rel.lower().endswith(".svg")
     blocks = [(0, text)] if is_svg_file else [(m.start(), m.group(0))
-                                              for m in re.finditer(r"<svg\b[^>]*>.*?</svg>", text, re.S | re.I)]
+                                              for m in re.finditer(r"<svg\b[^>]{0,2000}>.*?</svg>", text, re.S | re.I)]
     for start, block in blocks:
         shapes, total_d, max_d, vw, vh, d_expr = analyze_svg_block(block)
         sev, kind = classify_svg(shapes, total_d, max_d, vw, vh, d_expr)
@@ -457,7 +488,7 @@ def main():
     root = os.path.abspath(a.root)
     cfg = load_run_config(a.run_file)
     base = a.base or cfg["base"]
-    vendored_abs = resolve(root, list(a.vendored) + cfg["vendored"])
+    vendored_abs, vendored_dropped = sanitize_vendored(resolve(root, list(a.vendored) + cfg["vendored"]), root)
     brand_abs = resolve(root, list(a.brand_asset) + cfg["brand_assets"])
     extra_subs = extra_vendored_from_components_json(root)
 
@@ -496,27 +527,41 @@ def main():
         # remainder so the truncation itself can never be a silent pass.
         truncated = size > MAX_BYTES
         try:
-            with open(ap_, encoding="utf-8", errors="replace") as fh:
-                text = fh.read(MAX_BYTES) if truncated else fh.read()
+            if truncated:
+                # HEAD **and** TAIL: reading only the head meant padding PREPENDED to the file
+                # pushed the drawing out of view and downgraded the hard block to soft.
+                half = MAX_BYTES // 2
+                with open(ap_, "rb") as fb:
+                    head = fb.read(half)
+                    fb.seek(max(half, size - half))
+                    tail = fb.read()
+                text = head.decode("utf-8", "replace") + "\n" + tail.decode("utf-8", "replace")
+            else:
+                with open(ap_, encoding="utf-8", errors="replace") as fh:
+                    text = fh.read()
         except OSError:
             continue
         scanned.append(rel)
         findings.extend(scan_text(rel, text))
         if truncated:
             findings.append({"file": rel, "line": 1, "kind": "oversized-truncated", "severity": "soft",
-                             "detail": "%dB > %dB: only the first %dB were scanned; the remainder is "
+                             "detail": "%dB > %dB: only the first and last %dB were scanned; the middle is "
                                        "unverified. Split the file or confirm it is not hand-drawn."
-                                       % (size, MAX_BYTES, MAX_BYTES)})
+                                       % (size, MAX_BYTES, MAX_BYTES // 2)})
 
     counts = {"hard": 0, "soft": 0, "warn": 0}
     for f in findings:
         counts[f["severity"]] += 1
     code = 3 if counts["hard"] else (2 if counts["soft"] else 0)
+    if code == 0 and fallback_note and fallback_note.startswith("NO USABLE BASELINE"):
+        code = 5  # cannot verify committed work -> fail closed (run_state blocks on anything outside 0/2/3)
 
     report = {"exit": code, "scanned": len(scanned), "exempt": len(exempt),
               "counts": counts, "findings": findings, "exempt_files": exempt}
     if fallback_note:
         report["note"] = fallback_note
+    if vendored_dropped:
+        report["vendored_dropped"] = vendored_dropped
 
     if a.out:
         with open(a.out, "w") as f:
