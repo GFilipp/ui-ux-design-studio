@@ -24,6 +24,18 @@ references for the diff-vs-reference check. The rest are the memory-library back
 - **Dropbox Brand** — operator content as an interactive product, not a static doc.
 - **Symphony of Vines** — cinematic 3D that stays editorial, if going bold.
 
+## Personal sites / multi-hyphenates (added 2026-09-22; the bar for a PERSONAL brand is not the product-led list above)
+Gary's steer while reviewing garyfilipp.com: "this is not business; renaissance-man, polyglot energy without being cringe or douche."
+Breadth shown as evidence and curiosity, with humility and humor; no adjectives about the owner, no trophy wall.
+- **Geoff Levy** (geofflevy.com) ★ — the split hero: name across the seam, photo-carried halves, nav in the corners. The Door's ancestor.
+- **Lynn Fisher** (lynnandtonic.com) ★ — the name is the artwork; a table-of-contents directory with leader dots; one humble line.
+- **Derek Sivers** (sive.rs) — "Me in 10 seconds", facts with years, a /now page; the polymath page with zero ego and zero decoration.
+- **Maggie Appleton** (maggieappleton.com) — the tagline formula ("makes X about A, B and C") and "mediocre developer" self-deprecation; a Library.
+- **Frank Chimero** (frankchimero.com) — index rows with a metadata subline, ↗ on every exit, nothing else on the page.
+- **Craig Mod** (craigmod.com) — steal the voice (honest, funny self-description), skip the shop (award ribbons, buy buttons).
+- **Patrick Collison** (patrickcollison.com) — breadth as a plain topic index; no photo, no adjectives.
+Captures live in the session scratchpad only (third-party, never committed); refresh with `render.mjs <url>` when needed.
+
 ★ = seed vision references for the floor loop.
 
 ## Captures (local, gitignored)
